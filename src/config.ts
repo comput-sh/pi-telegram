@@ -16,7 +16,7 @@ export const GLOBAL_SETTINGS_VERSION = 1;
 export const PROJECT_SETTINGS_VERSION = 1;
 export const PROJECT_SETTINGS_RELATIVE_PATH = join(
   ".pi",
-  "pi-telegram-extension.local.json",
+  "pi-telegram.local.json",
 );
 
 export interface TelegramBotIdentity {
@@ -70,14 +70,8 @@ export function getGlobalSettingsPath(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   return resolve(
-    env.PI_TELEGRAM_EXTENSION_SETTINGS?.trim() ||
-      join(
-        homedir(),
-        ".pi",
-        "agent",
-        "pi-telegram-extension",
-        "settings.json",
-      ),
+    env.PI_TELEGRAM_SETTINGS?.trim() ||
+      join(homedir(), ".pi", "agent", "pi-telegram", "settings.json"),
   );
 }
 
@@ -137,7 +131,7 @@ function validateGlobalSettings(
 ): GlobalSettings {
   const settings = value as GlobalSettingsFile | undefined;
   if (!settings || settings.version !== GLOBAL_SETTINGS_VERSION) {
-    throw new Error(`Pi Telegram Extension settings at ${path} are invalid.`);
+    throw new Error(`Pi Telegram settings at ${path} are invalid.`);
   }
   if (settings.provisioningMode === "manual") {
     return { version: 1, provisioningMode: "manual" };
@@ -149,7 +143,7 @@ function validateGlobalSettings(
       manager: validateManager(settings.manager),
     };
   }
-  throw new Error(`Pi Telegram Extension settings at ${path} are invalid.`);
+  throw new Error(`Pi Telegram settings at ${path} are invalid.`);
 }
 
 function validateProjectSettings(
@@ -278,7 +272,7 @@ async function excludeProjectSettingsFromGit(cwd: string): Promise<void> {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const pattern = "/.pi/pi-telegram-extension.local.json";
+    const pattern = "/.pi/pi-telegram.local.json";
     if (existing.split(/\r?\n/).includes(pattern)) return;
     await mkdir(dirname(excludePath), { recursive: true });
     const separator = existing && !existing.endsWith("\n") ? "\n" : "";

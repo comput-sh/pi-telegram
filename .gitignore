@@ -3,9 +3,9 @@ coverage/
 dist/
 *.tgz
 
-# Pi Telegram Extension local credentials
-.pi/pi-telegram-extension.local.json
-pi-telegram-extension.local.json
+# Pi Telegram local credentials
+.pi/pi-telegram.local.json
+pi-telegram.local.json
 .env
 .env.*
 *.key

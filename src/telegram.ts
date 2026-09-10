@@ -14,14 +14,14 @@ const DRAFT_REFRESH_INTERVAL_MS = 5_000;
 const DRAFT_STREAM_INTERVAL_MS = 1_500;
 const PROGRESS_LINE_LIMIT = 512;
 const TELEGRAM_HELP = [
-  "Pi Telegram Extension controls",
+  "Pi Telegram controls",
   "",
   "Normal message: follow-up",
   "!message or /steer message: steer active work",
   "!!message: send a literal leading !",
   "/status: show the connected Pi session",
   "/stop or stop: cancel the current Telegram task",
-  "/reload: reload Pi extensions when idle",
+  "/reload: reload Pi resources when idle",
 ].join("\n");
 
 const AI_ACTIONS = {
@@ -233,11 +233,11 @@ export class TelegramSessionConnection {
 
   async configureCommandMenu(): Promise<void> {
     const commands = [
-      { command: "help", description: "Show Pi Telegram Extension controls" },
+      { command: "help", description: "Show Pi Telegram controls" },
       { command: "status", description: "Show the connected Pi session" },
       { command: "steer", description: "Steer active work: /steer message" },
       { command: "stop", description: "Cancel the current Telegram task" },
-      { command: "reload", description: "Reload Pi extensions when idle" },
+      { command: "reload", description: "Reload Pi resources when idle" },
     ];
     try {
       await this.call<boolean>(

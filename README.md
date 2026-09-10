@@ -1,19 +1,19 @@
-# Pi Telegram Extension
+# Pi Telegram
 
 Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/badlogic/pi-mono) sessions.
 
-Pi Telegram Extension connects one project-specific Telegram bot to one live Pi session. It supports owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
+Pi Telegram connects one project-specific Telegram bot to one live Pi session. It supports owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
 
 ## Install
 
 ```bash
-pi install npm:pi-telegram-extension
+pi install npm:@comput/pi-telegram
 ```
 
 Until the first npm release, install directly from GitHub:
 
 ```bash
-pi install git:github.com/mbundgaard/PiTelegramExtension
+pi install git:github.com/mbundgaard/PiTelegram
 ```
 
 Start a new Pi session or run `/reload` after installation.
@@ -29,16 +29,16 @@ Choose manager mode and enter the manager bot username and token in Pi's local s
 The manager configuration is stored globally:
 
 ```text
-~/.pi/agent/pi-telegram-extension/settings.json
+~/.pi/agent/pi-telegram/settings.json
 ```
 
-The extension can then create a managed bot after the user explicitly chooses its exact username. It never derives, hashes, truncates, or otherwise chooses a username from the project name. Telegram still requires the owner to approve the managed-bot creation link.
+Pi Telegram can then create a managed bot after the user explicitly chooses its exact username. It never derives, hashes, truncates, or otherwise chooses a username from the project name. Telegram still requires the owner to approve the managed-bot creation link.
 
 ### Manual mode
 
 Choose manual mode if you create bots yourself. That decision is saved globally, so the manager question is not shown again. Each unconfigured project asks locally for its manually created bot username and token.
 
-The extension validates the token with `getMe`, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
+Pi Telegram validates the token with `getMe`, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
 
 You can change setup later with:
 
@@ -56,7 +56,7 @@ Tokens are never accepted through model tool arguments or chat.
 Each project stores its complete private bot connection in:
 
 ```text
-<project>/.pi/pi-telegram-extension.local.json
+<project>/.pi/pi-telegram.local.json
 ```
 
 ```json
@@ -72,7 +72,7 @@ Each project stores its complete private bot connection in:
 }
 ```
 
-The bot ID and canonical username come from Telegram. The extension adds this path to the local Git exclude file when the project is a Git repository. Never commit or share it.
+The bot ID and canonical username come from Telegram. Pi Telegram adds this path to the local Git exclude file when the project is a Git repository. Never commit or share it.
 
 There is no cloud registry, Azure service, deterministic project key, or tracked bot binding.
 
@@ -82,7 +82,7 @@ In manager mode, tell Pi:
 
 > Enable Telegram using @MyChosenBot.
 
-If no username was supplied, `telegram_enable` asks for the exact username instead of inventing one. Open the returned approval link, approve creation in Telegram, and ask Pi to enable Telegram again with the same username. The extension obtains and verifies the managed-bot token locally, restricts access, saves the project settings, and connects.
+If no username was supplied, `telegram_enable` asks for the exact username instead of inventing one. Open the returned approval link, approve creation in Telegram, and ask Pi to enable Telegram again with the same username. Pi Telegram obtains and verifies the managed-bot token locally, restricts access, saves the project settings, and connects.
 
 ## Telegram controls
 
@@ -94,7 +94,7 @@ If no username was supplied, `telegram_enable` asks for the exact username inste
 | `stop` or `/stop` | Cancels the current Telegram task |
 | `/status` | Shows the connected project/session |
 | `/reload` | Reloads Pi while idle |
-| `/help` | Shows Pi Telegram Extension controls |
+| `/help` | Shows Pi Telegram controls |
 
 ## Responses
 
@@ -132,7 +132,7 @@ See [`docs/architecture.md`](docs/architecture.md) and [`docs/telegram-rich-mess
 
 ## Security
 
-Pi extensions run with full system access. Review source before installation. Pi Telegram Extension accepts only private text from the paired owner and never sends hidden reasoning or raw tool results to Telegram.
+Pi packages run with full system access. Review source before installation. Pi Telegram accepts only private text from the paired owner and never sends hidden reasoning or raw tool results to Telegram.
 
 Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 

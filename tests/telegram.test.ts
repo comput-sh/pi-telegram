@@ -226,7 +226,7 @@ test("command menu is scoped to the Telegram owner chat", async () => {
 
 test("sendDocument uploads a native Telegram document with an optional caption", async () => {
   const originalFetch = globalThis.fetch;
-  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-extension-document-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-document-"));
   const path = join(directory, "report.txt");
   await writeFile(path, "report contents", "utf8");
   let requestBody: FormData | undefined;

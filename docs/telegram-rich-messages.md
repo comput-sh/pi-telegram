@@ -4,7 +4,7 @@ Source reviewed: [Telegram Bot API](https://core.telegram.org/bots/api#rich-mess
 
 ## Why this matters
 
-Telegram's Rich Messages APIs are explicitly designed for highly structured content and streamed AI-generated replies. They are a better long-term fit for Pi Telegram Extension than legacy `sendMessage` with MarkdownV2.
+Telegram's Rich Messages APIs are explicitly designed for highly structured content and streamed AI-generated replies. They are a better long-term fit for Pi Telegram than legacy `sendMessage` with MarkdownV2.
 
 ## Relevant capabilities
 
@@ -39,9 +39,9 @@ Published limits are 32,768 UTF-8 text characters, 500 blocks, 16 nesting levels
 
 The tested response lifecycle and rollback baseline are recorded in [`telegram-draft-ux-baseline.md`](telegram-draft-ux-baseline.md).
 
-## Pi Telegram Extension implementation status
+## Pi Telegram implementation status
 
-The first Rich Messages integration is implemented in the extension:
+The first Rich Messages integration is implemented in Pi Telegram:
 
 - one stable draft that begins as native Rich activity and uses an invisibly changing five-second payload heartbeat;
 - tool-aware thinking, reading, searching, browsing, running-command, and editing labels/icons until public progress exists;
@@ -53,7 +53,7 @@ The first Rich Messages integration is implemented in the extension:
 
 Controlled tests against a project bot found that official and alternative mobile clients animate long `sendRichMessageDraft` response text too slowly, regardless of stable/rotating IDs or Markdown/explicit blocks. Short native activity blocks render well, and plain `sendMessageDraft` response updates render completely on both clients. A later real-session test found that a separate ordinary commentary message was not reliably visible while a lower activity draft dominated the UI. The production lifecycle therefore replaces Rich activity in the same stable draft as soon as public commentary exists. Mobile expires inactive drafts after roughly eight seconds and ignores identical refreshes, so both Rich and plain drafts use an invisibly changing five-second payload heartbeat. The final persisted response still uses Rich Markdown.
 
-## Recommended Pi Telegram Extension experience
+## Recommended Pi Telegram experience
 
 ### Implemented: draft lifecycle
 
@@ -88,7 +88,7 @@ Only generic labels and icon changes should be shown. Raw tool arguments, result
 
 ### Implemented: Rich Markdown output
 
-The extension injects the Rich Markdown contract and sends the model's completed public response as:
+Pi Telegram injects the Rich Markdown contract and sends the model's completed public response as:
 
 ```json
 {

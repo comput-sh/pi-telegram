@@ -34,14 +34,14 @@ import {
 } from "./setup.ts";
 import { TelegramApiError, TelegramSessionConnection } from "./telegram.ts";
 
-const STATUS_ID = "pi-telegram-extension";
-const PRODUCT_NAME = "Pi Telegram Extension";
+const STATUS_ID = "pi-telegram";
+const PRODUCT_NAME = "Pi Telegram";
 
 function projectName(cwd: string): string {
   return basename(resolve(cwd));
 }
 
-export default function piTelegramExtension(pi: ExtensionAPI): void {
+export default function piTelegram(pi: ExtensionAPI): void {
   let connection: TelegramSessionConnection | undefined;
   let connectedBot: ProjectBotSettings | undefined;
   let lastDeliveredAssistantEntryId: string | undefined;
@@ -102,7 +102,7 @@ export default function piTelegramExtension(pi: ExtensionAPI): void {
         },
         () => {
           if (!ctx.isIdle()) return false;
-          pi.sendUserMessage("/pi-telegram-extension-reload", {
+          pi.sendUserMessage("/pi-telegram-reload", {
             deliverAs: "followUp",
             expandPromptTemplates: true,
           });
@@ -341,7 +341,7 @@ export default function piTelegramExtension(pi: ExtensionAPI): void {
     await current?.stop();
   });
 
-  pi.registerCommand("pi-telegram-extension-reload", {
+  pi.registerCommand("pi-telegram-reload", {
     description: "Reload Pi resources after a Telegram /reload request",
     handler: async (_args, ctx) => {
       await ctx.reload();
@@ -349,10 +349,10 @@ export default function piTelegramExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("telegram-setup", {
-    description: "Choose manager or manual provisioning for Pi Telegram Extension",
+    description: "Choose manager or manual provisioning for Pi Telegram",
     handler: async (_args, ctx) => {
       const selected = await ctx.ui.select(
-        "How should Pi Telegram Extension configure project bots?",
+        "How should Pi Telegram configure project bots?",
         [
           "Use a Telegram manager bot",
           "I will provide each project bot manually",
@@ -476,7 +476,7 @@ export default function piTelegramExtension(pi: ExtensionAPI): void {
           content: [
             {
               type: "text",
-              text: "Pi Telegram Extension has not been configured. Run /telegram-setup in the local Pi UI. Tokens must not be sent through chat.",
+              text: "Pi Telegram has not been configured. Run /telegram-setup in the local Pi UI. Tokens must not be sent through chat.",
             },
           ],
           details: { status: "setup_required", settingsPath: getGlobalSettingsPath() },
@@ -606,7 +606,7 @@ export default function piTelegramExtension(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("telegram-status", {
-    description: "Show the Pi Telegram Extension connection status for this session",
+    description: "Show the Pi Telegram connection status for this session",
     handler: async (_args, ctx) => {
       if (connection && connectedBot) {
         ctx.ui.notify(`Connected to @${connectedBot.username}`, "info");

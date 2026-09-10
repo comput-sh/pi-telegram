@@ -1,5 +1,5 @@
 {
-  "name": "pi-telegram-extension",
+  "name": "@comput/pi-telegram",
   "version": "0.1.0",
   "description": "Use Telegram as a native frontend for live Pi coding-agent sessions.",
   "license": "MIT",
@@ -10,16 +10,15 @@
     "pi",
     "pi-coding-agent",
     "telegram",
-    "extension",
     "coding-agent"
   ],
-  "homepage": "https://github.com/mbundgaard/PiTelegramExtension#readme",
+  "homepage": "https://github.com/mbundgaard/PiTelegram#readme",
   "bugs": {
-    "url": "https://github.com/mbundgaard/PiTelegramExtension/issues"
+    "url": "https://github.com/mbundgaard/PiTelegram/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mbundgaard/PiTelegramExtension.git"
+    "url": "git+https://github.com/mbundgaard/PiTelegram.git"
   },
   "files": [
     "src/**/*.ts",

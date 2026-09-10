@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-Pi Telegram Extension is a local Pi package. It talks directly to the Telegram Bot API and has no hosted provisioner, cloud registry, webhook, Azure resource, or shared service credential.
+Pi Telegram is a local Pi package. It talks directly to the Telegram Bot API and has no hosted provisioner, cloud registry, webhook, Azure resource, or shared service credential.
 
 A skill is optional and must never own credentials, provisioning state, authorization, or transport.
 
@@ -11,7 +11,7 @@ A skill is optional and must never own credentials, provisioning state, authoriz
 ### Global settings
 
 ```text
-~/.pi/agent/pi-telegram-extension/settings.json
+~/.pi/agent/pi-telegram/settings.json
 ```
 
 The first interactive run records one provisioning mode:
@@ -19,17 +19,17 @@ The first interactive run records one provisioning mode:
 - `manager` — includes the Telegram-verified manager bot ID, username, token, and managed-update offset.
 - `manual` — records the user's decision not to configure a manager bot.
 
-Declining manager mode is persistent. The extension does not ask again unless the user runs `/telegram-setup` or `/telegram-setup-manager`.
+Declining manager mode is persistent. Pi Telegram does not ask again unless the user runs `/telegram-setup` or `/telegram-setup-manager`.
 
 ### Private project settings
 
 ```text
-<project>/.pi/pi-telegram-extension.local.json
+<project>/.pi/pi-telegram.local.json
 ```
 
 This file contains the project bot's Telegram-provided ID and canonical username, token, authorized owner ID, and managed/manual origin. It applies across Pi sessions in the project but is never stored in Pi transcript/session data.
 
-The extension writes private files with restrictive permissions where the platform supports them. In Git repositories, it adds the project settings path to `.git/info/exclude`. There is intentionally no tracked project binding.
+Pi Telegram writes private files with restrictive permissions where the platform supports them. In Git repositories, it adds the project settings path to `.git/info/exclude`. There is intentionally no tracked project binding.
 
 ## Manual-bot flow
 
@@ -40,7 +40,7 @@ First run or /telegram-setup-bot
   -> call getMe and verify the canonical username
   -> generate a one-time pairing code
   -> user opens the bot, presses Start, and sends the exact code
-  -> extension accepts only the matching private human sender
+  -> Pi Telegram accepts only the matching private human sender
   -> save bot ID, canonical username, token, and owner ID in project settings
   -> connect the live Pi session
 ```
@@ -58,11 +58,11 @@ First global run
 
 User explicitly asks to enable Telegram
   -> telegram_enable requires the exact user-chosen bot username
-  -> extension checks queued managed_bot updates locally
+  -> Pi Telegram checks queued managed_bot updates locally
   -> if absent, return t.me/newbot/<manager>/<chosen-username> approval URL
 
 User approves creation and invokes telegram_enable again
-  -> extension receives the matching managed_bot update
+  -> Pi Telegram receives the matching managed_bot update
   -> getManagedBotToken obtains the child token
   -> child getMe verifies ID and canonical username
   -> setManagedBotAccessSettings restricts access

@@ -15,9 +15,9 @@ import {
 } from "../src/config.ts";
 
 test("global manual mode is saved without manager credentials", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-extension-config-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
   const path = join(directory, "settings.json");
-  const env = { PI_TELEGRAM_EXTENSION_SETTINGS: path };
+  const env = { PI_TELEGRAM_SETTINGS: path };
   try {
     await saveGlobalSettings({ version: 1, provisioningMode: "manual" }, env);
     assert.equal(getGlobalSettingsPath(env), path);
@@ -31,9 +31,9 @@ test("global manual mode is saved without manager credentials", async () => {
 });
 
 test("global manager identity and token are stored together in settings", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-extension-config-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
   const path = join(directory, "settings.json");
-  const env = { PI_TELEGRAM_EXTENSION_SETTINGS: path };
+  const env = { PI_TELEGRAM_SETTINGS: path };
   try {
     const settings = {
       version: 1 as const,
@@ -60,7 +60,7 @@ test("global manager identity and token are stored together in settings", async 
 });
 
 test("project bot settings are private project-local state", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-extension-project-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-project-"));
   try {
     const settings = {
       version: 1 as const,
@@ -73,7 +73,7 @@ test("project bot settings are private project-local state", async () => {
     await saveProjectSettings(directory, settings);
     assert.equal(
       getProjectSettingsPath(directory),
-      join(directory, ".pi", "pi-telegram-extension.local.json"),
+      join(directory, ".pi", "pi-telegram.local.json"),
     );
     assert.deepEqual(await loadProjectSettings(directory), settings);
     const savedFile = JSON.parse(
@@ -95,16 +95,16 @@ test("project bot settings are private project-local state", async () => {
 });
 
 test("configuration rejects legacy or malformed shapes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-extension-config-"));
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
   const path = join(directory, "settings.json");
   try {
     await writeFile(
       path,
-      JSON.stringify({ provisionerUrl: "https://example.test", apiKey: "legacy" }),
+      JSON.stringify({ serviceUrl: "https://example.test", apiKey: "legacy" }),
       "utf8",
     );
     await assert.rejects(
-      () => loadGlobalSettings({ PI_TELEGRAM_EXTENSION_SETTINGS: path }),
+      () => loadGlobalSettings({ PI_TELEGRAM_SETTINGS: path }),
       /settings .* are invalid/i,
     );
   } finally {

@@ -1,4 +1,4 @@
-# Pi Telegram Extension Agent Guide
+# Pi Telegram Agent Guide
 
 ## Product direction
 
@@ -6,22 +6,22 @@ Make Telegram a first-class frontend for live Pi coding-agent sessions. Prefer n
 
 ## Boundaries
 
-- Keep transport, authorization, lifecycle, polling, and credentials in extension code.
-- The extension talks directly to the Telegram Bot API; do not introduce a hosted provisioner or cloud registry.
-- Store manager mode and manager credentials globally in `~/.pi/agent/pi-telegram-extension/settings.json`.
-- Store each project bot in `.pi/pi-telegram-extension.local.json`, outside Pi session/transcript data.
+- Keep transport, authorization, lifecycle, polling, and credentials in package code.
+- Pi Telegram talks directly to the Telegram Bot API; do not introduce a hosted provisioner or cloud registry.
+- Store manager mode and manager credentials globally in `~/.pi/agent/pi-telegram/settings.json`.
+- Store each project bot in `.pi/pi-telegram.local.json`, outside Pi session/transcript data.
 - Never derive, suggest, hash, or truncate bot usernames from project names. Managed usernames are explicit user choices; existing identities come from `getMe`.
 - Tokens must be collected through hidden local UI, never through model tool parameters or chat.
 - One Pi session owns one Telegram `getUpdates` connection.
 - Accept only private messages from the stored owner.
 - Send Telegram output only for Telegram-originated requests.
 - Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
-- Never commit bot tokens, extension local settings, private keys, or environment files.
+- Never commit bot tokens, local settings, private keys, or environment files.
 
 ## Layout
 
-- `src/` — TypeScript Pi extension.
-- `tests/` — extension tests.
+- `src/` — TypeScript Pi package.
+- `tests/` — automated tests.
 - `docs/` — architecture and Telegram UX findings.
 
 ## Validation
@@ -30,4 +30,4 @@ Make Telegram a first-class frontend for live Pi coding-agent sessions. Prefer n
 npm run validate
 ```
 
-After changing an installed local extension, run `/reload` in Pi.
+After changing an installed local package, run `/reload` in Pi.

@@ -35,7 +35,7 @@ test("formatSessionStatusMessage uses the status heading", () => {
     hostname: "workstation",
     ip: "192.168.1.20",
   });
-  assert.match(message, /^Pi Telegram Extension session status$/m);
+  assert.match(message, /^Pi Telegram session status$/m);
   assert.match(message, /^Branch: main$/m);
 });
 

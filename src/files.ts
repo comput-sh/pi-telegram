@@ -33,7 +33,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
   ".zip": "application/zip",
 };
 
-function extension(fileName: string): string {
+function fileSuffix(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   return dot < 0 ? "" : fileName.slice(dot).toLowerCase();
 }
@@ -48,8 +48,8 @@ function assertSafeRelativePath(relativePath: string): void {
   const isCredentialFile =
     fileName === "local.settings.json" ||
     fileName === "servicehost.credentials.json" ||
-    fileName === "pi-telegram-extension.local.json" ||
-    fileName === "pi-telegram-extension.settings.json";
+    fileName === "pi-telegram.local.json" ||
+    fileName === "pi-telegram.settings.json";
 
   if (
     segments.includes(".git") ||
@@ -58,7 +58,7 @@ function assertSafeRelativePath(relativePath: string): void {
     isCredentialFile
   ) {
     throw new Error(
-      "Pi Telegram Extension will not send credential or repository-internal files.",
+      "Pi Telegram will not send credential or repository-internal files.",
     );
   }
 }
@@ -113,7 +113,7 @@ export async function resolveTelegramProjectFile(
   return {
     path: canonicalPath,
     fileName,
-    contentType: CONTENT_TYPES[extension(fileName)] || "application/octet-stream",
+    contentType: CONTENT_TYPES[fileSuffix(fileName)] || "application/octet-stream",
     size: information.size,
   };
 }
