@@ -2,7 +2,18 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { basename, resolve } from "node:path";
 import { Type } from "typebox";
 
-import { getTelegramPiConfigFilePath, loadTelegramPiConfig } from "./config.ts";
+import { createManagedBotUrl, findManagedBot } from "./bot-api.ts";
+import {
+  getGlobalSettingsPath,
+  getProjectSettingsPath,
+  loadGlobalSettings,
+  loadProjectSettings,
+  normalizeBotUsername,
+  saveGlobalSettings,
+  saveProjectSettings,
+  type GlobalSettings,
+  type ProjectBotSettings,
+} from "./config.ts";
 import { resolveTelegramProjectFile } from "./files.ts";
 import {
   formatSessionStartupMessage,
@@ -15,35 +26,24 @@ import {
   findLatestAssistantText,
   getPublicTextPhase,
 } from "./messages.ts";
+import { isTelegramInput, routeTelegramInput, wrapTelegramInput } from "./routing.ts";
 import {
-  assertBindingMatchesBot,
-  deriveBotUsername,
-  getProjectBindingPath,
-  loadProjectBinding,
-  normalizeBotUsername,
-  saveProjectBinding,
-} from "./project-binding.ts";
-import {
-  getOrProvisionProjectBot,
-  lookupProjectBot,
-  lookupProjectBotByKey,
-  type ProjectBot,
-} from "./provisioner.ts";
-import {
-  isTelegramInput,
-  routeTelegramInput,
-  wrapTelegramInput,
-} from "./routing.ts";
-import {
-  TelegramApiError,
-  TelegramSessionConnection,
-} from "./telegram.ts";
+  configureManager,
+  configureManualProjectBot,
+  ensureInitialConfiguration,
+} from "./setup.ts";
+import { TelegramApiError, TelegramSessionConnection } from "./telegram.ts";
 
-const STATUS_ID = "telegrampi";
+const STATUS_ID = "pi-telegram-extension";
+const PRODUCT_NAME = "Pi Telegram Extension";
 
-export default function telegramPiExtension(pi: ExtensionAPI): void {
+function projectName(cwd: string): string {
+  return basename(resolve(cwd));
+}
+
+export default function piTelegramExtension(pi: ExtensionAPI): void {
   let connection: TelegramSessionConnection | undefined;
-  let connectedBot: ProjectBot | undefined;
+  let connectedBot: ProjectBotSettings | undefined;
   let lastDeliveredAssistantEntryId: string | undefined;
   let lastDeliveredAssistantTimestamp: number | undefined;
   let routeResponsesToTelegram = false;
@@ -54,16 +54,13 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     ctx?.ui.setStatus(STATUS_ID, undefined);
   };
 
-  const connectReadyBot = async (
-    bot: ProjectBot,
+  const connectBot = async (
+    bot: ProjectBotSettings,
     ctx: ExtensionContext,
   ): Promise<boolean> => {
     if (connection) {
-      if (connectedBot?.projectKey === bot.projectKey) return true;
+      if (connectedBot?.id === bot.id) return true;
       throw new Error("This Pi session is already connected to another Telegram bot.");
-    }
-    if (bot.status !== "ready" || !bot.token || !bot.ownerUserId) {
-      throw new Error("The project bot is not ready.");
     }
     const ownerUserId = Number(bot.ownerUserId);
     if (!Number.isSafeInteger(ownerUserId)) {
@@ -98,14 +95,14 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
           const host = getHostIdentity();
           const branch = await getGitBranch(ctx.cwd);
           return formatSessionStatusMessage({
-            projectName: bot.projectName,
+            projectName: projectName(ctx.cwd),
             branch,
             ...host,
           });
         },
         () => {
           if (!ctx.isIdle()) return false;
-          pi.sendUserMessage("/telegrampi-reload", {
+          pi.sendUserMessage("/pi-telegram-extension-reload", {
             deliverAs: "followUp",
             expandPromptTemplates: true,
           });
@@ -132,7 +129,7 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
 
       ctx.ui.setStatus(
         STATUS_ID,
-        ctx.ui.theme.fg("success", `telegram: @${bot.botUsername}`),
+        ctx.ui.theme.fg("success", `telegram: @${bot.username}`),
       );
       current.completion?.catch((error: unknown) => {
         if (connection !== current) return;
@@ -148,7 +145,7 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
       try {
         await current.sendPlainMessage(
           formatSessionStartupMessage({
-            projectName: bot.projectName,
+            projectName: projectName(ctx.cwd),
             branch,
             ...host,
           }),
@@ -160,9 +157,8 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
           error.errorCode === 400 &&
           /chat not found/i.test(error.message)
         ) {
-          const destination = bot.conversationUrl || `https://t.me/${bot.botUsername}`;
           ctx.ui.notify(
-            `Telegram bot is ready. Open ${destination} and press Start.`,
+            `Telegram bot is ready. Open https://t.me/${bot.username} and press Start.`,
             "info",
           );
           return false;
@@ -183,9 +179,7 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
   };
 
   pi.on("session_start", async (_event, ctx) => {
-    const latestAssistant = findLatestAssistantText(
-      ctx.sessionManager.getBranch(),
-    );
+    const latestAssistant = findLatestAssistantText(ctx.sessionManager.getBranch());
     lastDeliveredAssistantEntryId = latestAssistant?.entryId;
     lastDeliveredAssistantTimestamp = latestAssistant?.messageTimestamp;
     routeResponsesToTelegram = false;
@@ -193,38 +187,14 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     if (ctx.mode === "print" || ctx.mode === "json") return;
 
     try {
-      const config = await loadTelegramPiConfig();
-      if (!config) return;
-
-      const projectName = basename(resolve(ctx.cwd));
-      const binding = await loadProjectBinding(ctx.cwd);
-      const bot = binding
-        ? await lookupProjectBotByKey(
-            config,
-            binding.projectKey,
-            AbortSignal.timeout(10_000),
-          )
-        : await lookupProjectBot(
-            config,
-            projectName,
-            AbortSignal.timeout(10_000),
-          );
-      if (binding) {
-        if (!bot) {
-          throw new Error(
-            `The TelegramPi project binding at ${getProjectBindingPath(ctx.cwd)} was not found by the provisioner.`,
-          );
-        }
-        assertBindingMatchesBot(binding, bot);
-      }
-      if (!bot || bot.status !== "ready") return;
-      await connectReadyBot(bot, ctx);
+      const configured = await ensureInitialConfiguration(ctx);
+      if (configured.project) await connectBot(configured.project, ctx);
     } catch (error) {
       connection = undefined;
       connectedBot = undefined;
       clearStatus(ctx);
       const message = error instanceof Error ? error.message : String(error);
-      ctx.ui.notify(`TelegramPi did not connect: ${message}`, "warning");
+      ctx.ui.notify(`${PRODUCT_NAME} did not connect: ${message}`, "warning");
     }
   });
 
@@ -249,13 +219,11 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("tool_execution_start", async (event) => {
-    if (!routeResponsesToTelegram) return;
-    await connection?.setDraftActivity(event.toolName);
+    if (routeResponsesToTelegram) await connection?.setDraftActivity(event.toolName);
   });
 
   pi.on("tool_execution_end", async () => {
-    if (!routeResponsesToTelegram) return;
-    await connection?.setDraftActivity();
+    if (routeResponsesToTelegram) await connection?.setDraftActivity();
   });
 
   pi.on("message_update", async (event, ctx) => {
@@ -295,17 +263,11 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
 
   pi.on("message_end", async (event, ctx) => {
     const current = connection;
-    if (
-      !current ||
-      !routeResponsesToTelegram ||
-      event.message.role !== "assistant"
-    ) {
+    if (!current || !routeResponsesToTelegram || event.message.role !== "assistant") {
       return;
     }
     const text = extractPublicAssistantText(event.message);
-    if (!text || event.message.timestamp === lastDeliveredAssistantTimestamp) {
-      return;
-    }
+    if (!text || event.message.timestamp === lastDeliveredAssistantTimestamp) return;
 
     if (event.message.stopReason === "toolUse") {
       outbound = outbound.then(async () => {
@@ -322,9 +284,7 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
       return;
     }
 
-    if (event.message.stopReason !== "stop" && event.message.stopReason !== "length") {
-      return;
-    }
+    if (event.message.stopReason !== "stop" && event.message.stopReason !== "length") return;
     outbound = outbound.then(async () => {
       if (connection !== current) return;
       try {
@@ -381,49 +341,57 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     await current?.stop();
   });
 
-  pi.registerCommand("telegrampi-reload", {
+  pi.registerCommand("pi-telegram-extension-reload", {
     description: "Reload Pi resources after a Telegram /reload request",
     handler: async (_args, ctx) => {
       await ctx.reload();
-      return;
     },
   });
 
-  pi.registerTool({
-    name: "telegram_create",
-    label: "Show TelegramPi Config File",
-    description:
-      "Show the TelegramPi provisioner configuration file path so the extension can enable Telegram without Azure access.",
-    promptSnippet: "Show the TelegramPi configuration file path when configuration is missing",
-    promptGuidelines: [
-      "Use telegram_create when telegram_enable reports missing TelegramPi user configuration and the user wants setup instructions.",
-      "Tell the user or agent to update only the reported configuration file; never print or reveal keys.",
-    ],
-    parameters: Type.Object({}, { additionalProperties: false }),
-    async execute() {
-      const configPath = getTelegramPiConfigFilePath();
-      const existing = await loadTelegramPiConfig().catch(() => undefined);
-      if (existing) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `TelegramPi configuration is already available at ${configPath}.`,
-            },
-          ],
-          details: { status: "already_configured", configPath },
-        };
-      }
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: `TelegramPi needs configuration in this file, then run telegram_enable again:\n\n${configPath}`,
-          },
+  pi.registerCommand("telegram-setup", {
+    description: "Choose manager or manual provisioning for Pi Telegram Extension",
+    handler: async (_args, ctx) => {
+      const selected = await ctx.ui.select(
+        "How should Pi Telegram Extension configure project bots?",
+        [
+          "Use a Telegram manager bot",
+          "I will provide each project bot manually",
         ],
-        details: { status: "missing_config", configPath },
-      };
+      );
+      if (selected === "Use a Telegram manager bot") {
+        await configureManager(ctx);
+      } else if (selected === "I will provide each project bot manually") {
+        const settings: GlobalSettings = {
+          version: 1,
+          provisioningMode: "manual",
+        };
+        await saveGlobalSettings(settings);
+        ctx.ui.notify(`Manual mode saved in ${getGlobalSettingsPath()}.`, "info");
+        const bot = await configureManualProjectBot(ctx);
+        if (bot && !connection) await connectBot(bot, ctx);
+      }
+    },
+  });
+
+  pi.registerCommand("telegram-setup-manager", {
+    description: "Configure the global Telegram manager bot",
+    handler: async (_args, ctx) => {
+      await configureManager(ctx);
+    },
+  });
+
+  pi.registerCommand("telegram-setup-bot", {
+    description: "Configure a manually provisioned bot for this project",
+    handler: async (_args, ctx) => {
+      if (connection) {
+        ctx.ui.notify(
+          "Restart or reload Pi before replacing the connected project bot.",
+          "warning",
+        );
+        return;
+      }
+      const bot = await configureManualProjectBot(ctx);
+      if (bot) await connectBot(bot, ctx);
     },
   });
 
@@ -431,26 +399,26 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     name: "telegram_enable",
     label: "Enable Telegram",
     description:
-      "Enable Telegram integration for the current Pi project. Uses an existing .telegrampi.json binding or bot record; for a genuinely new project, returns the derived username and requires the user to choose it or provide a custom Telegram bot username before provisioning.",
-    promptSnippet:
-      "Enable the project-specific Telegram integration when the user requests it",
+      "Connect the current project bot. In manager mode, create or retrieve a managed bot using the exact username explicitly chosen by the user. Telegram credentials are configured only through local Pi setup commands.",
+    promptSnippet: "Enable Telegram for the current project when the user requests it",
     promptGuidelines: [
-      "Use telegram_enable when the user explicitly asks to enable or connect Telegram for the current project; never request, reveal, or manage Telegram credentials yourself.",
-      "When telegram_enable returns username_choice_required, ask the user whether to use the suggested derived username or specify a custom username, then invoke telegram_enable again with that explicit choice. Never choose on the user's behalf.",
-      "When the user explicitly requests a username, including while another username is pending, invoke telegram_enable with usernameChoice set to custom and botUsername set to the exact requested value.",
+      "Use telegram_enable only when the user explicitly asks to enable or connect Telegram for the current project.",
+      "Never request, reveal, or pass Telegram bot tokens through tool arguments or chat.",
+      "If the tool returns username_required, ask the user for the exact managed-bot username and call it again with botUsername. Never derive or choose a username from the project name.",
+      "If manual setup is required, direct the user to run /telegram-setup-bot in the local Pi UI.",
     ],
     parameters: Type.Object(
       {
-        usernameChoice: Type.Optional(
-          Type.Union([Type.Literal("derived"), Type.Literal("custom")], {
-            description:
-              "The user's explicit choice for first-time provisioning. Omit on the initial call.",
-          }),
-        ),
         botUsername: Type.Optional(
           Type.String({
             description:
-              "Custom Telegram bot username when usernameChoice is custom.",
+              "Exact managed-bot username explicitly supplied by the user. Never derive one.",
+          }),
+        ),
+        displayName: Type.Optional(
+          Type.String({
+            maxLength: 64,
+            description: "Optional display name for a newly managed bot.",
           }),
         ),
       },
@@ -459,172 +427,136 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (ctx.mode === "print" || ctx.mode === "json") {
         return {
-          content: [
-            {
-              type: "text",
-              text: "Telegram can only be enabled from a live interactive Pi session.",
-            },
-          ],
+          content: [{ type: "text", text: "Telegram can only be enabled from a live interactive Pi session." }],
           details: { status: "unsupported_mode" },
         };
       }
+
       if (connection && connectedBot) {
-        const binding = await saveProjectBinding(ctx.cwd, connectedBot);
-        const bindingPath = getProjectBindingPath(ctx.cwd);
-        const destination =
-          connectedBot.conversationUrl || `https://t.me/${connectedBot.botUsername}`;
         return {
           content: [
             {
               type: "text",
-              text: `Telegram is already enabled and connected through @${connectedBot.botUsername}. Open ${destination} and press Start if this is the bot's first session. Normal messages are follow-ups; prefix ! to steer active work, use !! for a literal leading !, and send stop to cancel the current Telegram task.`,
+              text: `Telegram is already connected through @${connectedBot.username}. Open https://t.me/${connectedBot.username} and press Start if needed.`,
             },
           ],
           details: {
             status: "connected",
-            botUsername: connectedBot.botUsername,
-            conversationUrl: connectedBot.conversationUrl,
-            projectKey: binding.projectKey,
-            bindingPath,
+            botId: connectedBot.id,
+            botUsername: connectedBot.username,
+            settingsPath: getProjectSettingsPath(ctx.cwd),
           },
         };
       }
 
-      const config = await loadTelegramPiConfig();
-      if (!config) {
-        throw new Error(
-          `TelegramPi configuration is missing. Run telegram_create to get the configuration file path, update that file, then run telegram_enable again.`,
-        );
-      }
-      const projectName = basename(resolve(ctx.cwd));
-      const requestSignal = signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
-        : AbortSignal.timeout(20_000);
-      const bindingPath = getProjectBindingPath(ctx.cwd);
-      const binding = await loadProjectBinding(ctx.cwd);
-      let bot = binding
-        ? await lookupProjectBotByKey(config, binding.projectKey, requestSignal)
-        : await lookupProjectBot(config, projectName, requestSignal);
-      if (binding) {
-        if (!bot) {
-          throw new Error(
-            `The TelegramPi project binding at ${bindingPath} was not found by the provisioner.`,
-          );
-        }
-        assertBindingMatchesBot(binding, bot);
-      }
-
-      const suggestedBotUsername = deriveBotUsername(
-        projectName,
-        config.botUsernamePrefix,
-      );
-      let selectedBotUsername: string | undefined;
-      if (params.usernameChoice === "custom") {
-        if (!params.botUsername?.trim()) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Ask the user for the custom Telegram bot username, then invoke telegram_enable again with usernameChoice set to custom and botUsername set to their answer.",
-              },
-            ],
-            details: {
-              status: "custom_username_required",
-              projectName,
-              suggestedBotUsername,
-              bindingPath,
-            },
-          };
-        }
-        selectedBotUsername = normalizeBotUsername(params.botUsername);
-      } else if (params.usernameChoice === "derived") {
-        selectedBotUsername = suggestedBotUsername;
-      }
-
-      if (!bot && !selectedBotUsername) {
+      const existing = await loadProjectSettings(ctx.cwd);
+      if (existing) {
+        const delivered = await connectBot(existing, ctx);
         return {
           content: [
             {
               type: "text",
-              text: `No Telegram bot exists for ${projectName}. Ask the user whether to use the suggested username @${suggestedBotUsername} or specify a custom Telegram bot username. Then invoke telegram_enable again with usernameChoice set to derived or custom. Do not choose without the user's explicit answer.`,
+              text: delivered
+                ? `Telegram is enabled through @${existing.username}.`
+                : `Telegram is configured through @${existing.username}. Open https://t.me/${existing.username}, press Start, and send a message.`,
             },
           ],
           details: {
-            status: "username_choice_required",
-            projectName,
-            suggestedBotUsername,
-            bindingPath,
+            status: "connected",
+            botId: existing.id,
+            botUsername: existing.username,
+            settingsPath: getProjectSettingsPath(ctx.cwd),
           },
         };
       }
 
-      if (
-        bot &&
-        selectedBotUsername &&
-        bot.botUsername.toLowerCase() !== selectedBotUsername.toLowerCase()
-      ) {
-        if (bot.status !== "pending") {
-          throw new Error(
-            `Telegram is already enabled through ready bot @${bot.botUsername}; its username cannot be changed.`,
-          );
-        }
-        bot = await getOrProvisionProjectBot(
-          config,
-          bot.projectName,
-          selectedBotUsername,
-          requestSignal,
-        );
-      } else if (!bot) {
-        bot = await getOrProvisionProjectBot(
-          config,
-          projectName,
-          selectedBotUsername,
-          requestSignal,
-        );
-      }
-
-      await saveProjectBinding(ctx.cwd, bot, {
-        allowUsernameUpdate: bot.status === "pending",
-      });
-
-      if (bot.status === "pending") {
-        const setup = bot.creationUrl
-          ? ` Open ${bot.creationUrl} and approve creation, then ask the agent to enable Telegram again.`
-          : " Complete bot creation through the Telegram setup bot, then ask the agent to enable Telegram again.";
+      const global = await loadGlobalSettings();
+      if (!global) {
         return {
           content: [
             {
               type: "text",
-              text: `Telegram bot @${bot.botUsername} is awaiting owner confirmation.${setup}`,
+              text: "Pi Telegram Extension has not been configured. Run /telegram-setup in the local Pi UI. Tokens must not be sent through chat.",
+            },
+          ],
+          details: { status: "setup_required", settingsPath: getGlobalSettingsPath() },
+        };
+      }
+      if (global.provisioningMode === "manual") {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "This installation uses manually provisioned project bots. Run /telegram-setup-bot in the local Pi UI and enter the username and token there. Do not send the token through chat.",
+            },
+          ],
+          details: {
+            status: "manual_setup_required",
+            settingsPath: getProjectSettingsPath(ctx.cwd),
+          },
+        };
+      }
+
+      if (!params.botUsername?.trim()) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: "Ask the user for the exact Telegram bot username they want to create, then invoke telegram_enable again with that username. Do not derive or suggest a project-based username.",
+            },
+          ],
+          details: { status: "username_required" },
+        };
+      }
+      const username = normalizeBotUsername(params.botUsername);
+      const requestSignal = signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+        : AbortSignal.timeout(20_000);
+      const managed = await findManagedBot(global.manager, username, requestSignal);
+      if (managed.nextOffset !== global.manager.updateOffset) {
+        await saveGlobalSettings({
+          ...global,
+          manager: { ...global.manager, updateOffset: managed.nextOffset },
+        });
+      }
+      if (!managed.settings) {
+        const displayName = params.displayName?.trim() || projectName(ctx.cwd);
+        const creationUrl = createManagedBotUrl(
+          global.manager.username,
+          username,
+          displayName,
+        );
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Managed bot @${username} needs owner approval. Open ${creationUrl}, approve creation, then ask the agent to enable Telegram again using the same username.`,
             },
           ],
           details: {
             status: "pending",
-            projectName,
-            botUsername: bot.botUsername,
-            creationUrl: bot.creationUrl,
-            bindingPath,
+            botUsername: username,
+            creationUrl,
           },
         };
       }
 
-      const startupMessageDelivered = await connectReadyBot(bot, ctx);
-      const destination = bot.conversationUrl || `https://t.me/${bot.botUsername}`;
+      await saveProjectSettings(ctx.cwd, managed.settings);
+      const delivered = await connectBot(managed.settings, ctx);
       return {
         content: [
           {
             type: "text",
-            text: startupMessageDelivered
-              ? `Telegram is enabled for ${projectName} through @${bot.botUsername}. Future Telegram messages will enter this live Pi session. Normal messages are follow-ups; prefix ! to steer active work, use !! for a literal leading !, and send stop to cancel the current Telegram task.`
-              : `Telegram is connected for ${projectName}, but Telegram requires the owner to initiate the new bot chat. Open ${destination}, press Start, and then send a message. The bot will explain follow-ups, ! steering, !! escaping, and stop.`,
+            text: delivered
+              ? `Telegram is enabled through managed bot @${managed.settings.username}.`
+              : `Telegram is configured through @${managed.settings.username}. Open https://t.me/${managed.settings.username}, press Start, and send a message.`,
           },
         ],
         details: {
           status: "connected",
-          projectName,
-          botUsername: bot.botUsername,
-          conversationUrl: bot.conversationUrl,
-          bindingPath,
+          botId: managed.settings.id,
+          botUsername: managed.settings.username,
+          settingsPath: getProjectSettingsPath(ctx.cwd),
         },
       };
     },
@@ -635,8 +567,7 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
     label: "Send File to Telegram",
     description:
       "Send a file from the active project to the authorized Telegram owner as a native document. Available only while handling a Telegram-originated request. Paths outside the project and credential-like files are rejected.",
-    promptSnippet:
-      "Send requested project artifacts to Telegram as native document attachments",
+    promptSnippet: "Send requested project artifacts to Telegram as native document attachments",
     promptGuidelines: [
       "Use telegram_send_file during a Telegram-originated request when the user explicitly asks to receive a project file or when a requested generated artifact should be downloadable.",
       "Pass a path inside the active project. Never attempt to send credentials, local settings, private keys, repository internals, or files unrelated to the user's request.",
@@ -646,53 +577,39 @@ export default function telegramPiExtension(pi: ExtensionAPI): void {
       {
         path: Type.String({
           minLength: 1,
-          description:
-            "Project-relative path, or an absolute path that still resolves inside the active project.",
+          description: "Project-relative path, or an absolute path that still resolves inside the active project.",
         }),
         caption: Type.Optional(
-          Type.String({
-            maxLength: 1_024,
-            description: "Optional plain-text Telegram document caption.",
-          }),
+          Type.String({ maxLength: 1_024, description: "Optional plain-text Telegram document caption." }),
         ),
       },
       { additionalProperties: false },
     ),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const current = connection;
-      if (!current || !connectedBot) {
-        throw new Error("Telegram is not connected for this Pi session.");
-      }
+      if (!current || !connectedBot) throw new Error("Telegram is not connected for this Pi session.");
       if (!routeResponsesToTelegram) {
-        throw new Error(
-          "Files can only be sent while handling a Telegram-originated request.",
-        );
+        throw new Error("Files can only be sent while handling a Telegram-originated request.");
       }
-
       const file = await resolveTelegramProjectFile(ctx.cwd, params.path);
       await current.sendDocument(file, params.caption, signal);
       return {
-        content: [
-          {
-            type: "text",
-            text: `Sent ${file.fileName} to @${connectedBot.botUsername}.`,
-          },
-        ],
+        content: [{ type: "text", text: `Sent ${file.fileName} to @${connectedBot.username}.` }],
         details: {
           status: "sent",
           fileName: file.fileName,
           size: file.size,
-          botUsername: connectedBot.botUsername,
+          botUsername: connectedBot.username,
         },
       };
     },
   });
 
   pi.registerCommand("telegram-status", {
-    description: "Show the TelegramPi connection status for this session",
+    description: "Show the Pi Telegram Extension connection status for this session",
     handler: async (_args, ctx) => {
       if (connection && connectedBot) {
-        ctx.ui.notify(`Connected to @${connectedBot.botUsername}`, "info");
+        ctx.ui.notify(`Connected to @${connectedBot.username}`, "info");
       } else {
         ctx.ui.notify("Telegram is not connected for this session", "info");
       }

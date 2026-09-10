@@ -6,30 +6,28 @@ Make Telegram a first-class frontend for live Pi coding-agent sessions. Prefer n
 
 ## Boundaries
 
-- Keep transport, authorization, lifecycle, polling, and credentials in extension/provisioner code.
-- Session startup performs read-only lookup and remains inert when no ready bot exists.
-- Provision only after an explicit user request through `telegram_enable`.
+- Keep transport, authorization, lifecycle, polling, and credentials in extension code.
+- The extension talks directly to the Telegram Bot API; do not introduce a hosted provisioner or cloud registry.
+- Store manager mode and manager credentials globally in `~/.pi/agent/pi-telegram-extension/settings.json`.
+- Store each project bot in `.pi/pi-telegram-extension.local.json`, outside Pi session/transcript data.
+- Never derive, suggest, hash, or truncate bot usernames from project names. Managed usernames are explicit user choices; existing identities come from `getMe`.
+- Tokens must be collected through hidden local UI, never through model tool parameters or chat.
 - One Pi session owns one Telegram `getUpdates` connection.
 - Accept only private messages from the stored owner.
 - Send Telegram output only for Telegram-originated requests.
 - Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
-- Never commit `telegrampi.json`, bot tokens, Function keys, storage strings, or local Function settings.
+- Never commit bot tokens, extension local settings, private keys, or environment files.
 
 ## Layout
 
 - `src/` — TypeScript Pi extension.
 - `tests/` — extension tests.
-- `provisioner/` — optional .NET isolated-worker Azure Functions provisioner.
-- `docs/` — architecture, APIs, and Telegram UX findings.
+- `docs/` — architecture and Telegram UX findings.
 
 ## Validation
 
 ```bash
 npm run validate
-
-cd provisioner
-dotnet build BotProvisioner.csproj --configuration Release
-dotnet test tests/BotProvisioner.Tests.csproj --configuration Release
 ```
 
 After changing an installed local extension, run `/reload` in Pi.

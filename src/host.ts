@@ -62,7 +62,7 @@ export function formatSessionStartupMessage(
 export function formatSessionStatusMessage(
   details: SessionStartupDetails,
 ): string {
-  return formatSessionMessage("TelegramPi session status", details);
+  return formatSessionMessage("Pi Telegram Extension session status", details);
 }
 
 export function getHostIdentity(): HostIdentity {

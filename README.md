@@ -2,18 +2,12 @@
 
 Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/badlogic/pi-mono) sessions.
 
-TelegramPi connects one project-specific Telegram bot to one live Pi session. It supports owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
+Pi Telegram Extension connects one project-specific Telegram bot to one live Pi session. It supports owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
 
 ## Install
 
 ```bash
 pi install npm:pi-telegram-extension
-```
-
-To try it without installing:
-
-```bash
-pi -e npm:pi-telegram-extension
 ```
 
 Until the first npm release, install directly from GitHub:
@@ -24,43 +18,71 @@ pi install git:github.com/mbundgaard/PiTelegramExtension
 
 Start a new Pi session or run `/reload` after installation.
 
-## Configure
+## First-time setup
 
-TelegramPi requires a bot provisioner. You can deploy the included [.NET Azure Functions provisioner](provisioner/) or point the extension at a compatible service.
+The first interactive run asks whether you have a Telegram **manager bot** that can create managed bots.
 
-Create `~/.pi/agent/telegrampi.json`:
+### Manager mode
 
-```json
-{
-  "provisionerUrl": "https://your-function-app.example/api",
-  "apiKey": "<your-function-key>",
-  "botUsernamePrefix": "pi"
-}
+Choose manager mode and enter the manager bot username and token in Pi's local setup UI. The token is hidden while entered and validated with Telegram's `getMe`; the bot must report `can_manage_bots: true`.
+
+The manager configuration is stored globally:
+
+```text
+~/.pi/agent/pi-telegram-extension/settings.json
 ```
 
-`botUsernamePrefix` is optional and defaults to `pi`; configure the provisioner with the same prefix. Alternatively, set both `TELEGRAMPI_PROVISIONER_URL` and `TELEGRAMPI_API_KEY`, plus optional `TELEGRAMPI_BOT_USERNAME_PREFIX`. `TELEGRAMPI_CONFIG` may point to another JSON configuration file.
+The extension can then create a managed bot after the user explicitly chooses its exact username. It never derives, hashes, truncates, or otherwise chooses a username from the project name. Telegram still requires the owner to approve the managed-bot creation link.
 
-Never place Function keys or bot tokens in a repository. The public package does not include access to a hosted provisioner.
+### Manual mode
 
-## Enable a project
+Choose manual mode if you create bots yourself. That decision is saved globally, so the manager question is not shown again. Each unconfigured project asks locally for its manually created bot username and token.
 
-In any project, tell Pi:
+The extension validates the token with `getMe`, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
 
-> Enable Telegram integration.
+You can change setup later with:
 
-For a new project, the extension asks whether to use its suggested bot username or a custom Telegram bot username. After the provisioner accepts the selection, TelegramPi writes a non-secret `.telegrampi.json` binding containing only:
+| Local Pi command | Purpose |
+|---|---|
+| `/telegram-setup` | Choose manager or manual mode |
+| `/telegram-setup-manager` | Configure or replace the global manager bot |
+| `/telegram-setup-bot` | Configure a manual bot for the current project |
+| `/telegram-status` | Show the current connection status |
+
+Tokens are never accepted through model tool arguments or chat.
+
+## Project configuration
+
+Each project stores its complete private bot connection in:
+
+```text
+<project>/.pi/pi-telegram-extension.local.json
+```
 
 ```json
 {
   "version": 1,
-  "projectKey": "example-12345678",
-  "botUsername": "exampleProjectBot"
+  "bot": {
+    "id": "987654321",
+    "username": "MyChosenBot",
+    "token": "<secret>",
+    "ownerUserId": "123456789",
+    "managed": false
+  }
 }
 ```
 
-This file can be committed. It makes the project-to-bot association portable across clones and folder renames.
+The bot ID and canonical username come from Telegram. The extension adds this path to the local Git exclude file when the project is a Git repository. Never commit or share it.
 
-Telegram requires the owner to approve managed-bot creation and press **Start** before a newly created bot can send private messages.
+There is no cloud registry, Azure service, deterministic project key, or tracked bot binding.
+
+## Enable a managed bot
+
+In manager mode, tell Pi:
+
+> Enable Telegram using @MyChosenBot.
+
+If no username was supplied, `telegram_enable` asks for the exact username instead of inventing one. Open the returned approval link, approve creation in Telegram, and ask Pi to enable Telegram again with the same username. The extension obtains and verifies the managed-bot token locally, restricts access, saves the project settings, and connects.
 
 ## Telegram controls
 
@@ -72,7 +94,7 @@ Telegram requires the owner to approve managed-bot creation and press **Start** 
 | `stop` or `/stop` | Cancels the current Telegram task |
 | `/status` | Shows the connected project/session |
 | `/reload` | Reloads Pi while idle |
-| `/help` | Shows TelegramPi controls |
+| `/help` | Shows Pi Telegram Extension controls |
 
 ## Responses
 
@@ -80,11 +102,11 @@ Telegram requires the owner to approve managed-bot creation and press **Start** 
 - The first public commentary replaces that draft with one evolving plain progress line.
 - Tool activity never switches back to generic Thinking after public progress appears.
 - Only public commentary and final-answer text are streamed; hidden reasoning and raw tool traffic stay private.
-- Completed responses are persisted as native Telegram Rich Messages with headings, tables, lists, code, details, formulas, and media support.
+- Completed responses are persisted as native Telegram Rich Messages.
 
 ## File attachments
 
-During a Telegram-originated request, ask Pi to send a generated or existing project file. The extension exposes `telegram_send_file`, which uploads it as a native Telegram document.
+During a Telegram-originated request, ask Pi to send a generated or existing project file. The `telegram_send_file` tool uploads it as a native Telegram document.
 
 Safeguards include:
 
@@ -106,19 +128,11 @@ Run from source:
 pi -e .
 ```
 
-Provisioner validation:
-
-```bash
-cd provisioner
-dotnet build BotProvisioner.csproj --configuration Release
-dotnet test tests/BotProvisioner.Tests.csproj --configuration Release
-```
-
-See [`docs/architecture.md`](docs/architecture.md), [`docs/api.md`](docs/api.md), and [`docs/telegram-rich-messages.md`](docs/telegram-rich-messages.md) for implementation details.
+See [`docs/architecture.md`](docs/architecture.md) and [`docs/telegram-rich-messages.md`](docs/telegram-rich-messages.md) for implementation details.
 
 ## Security
 
-Pi extensions run with full system access. Review source before installation. TelegramPi accepts only private text from the provisioned owner, keeps bot tokens in provisioner storage and session memory, and never sends hidden reasoning or raw tool results to Telegram.
+Pi extensions run with full system access. Review source before installation. Pi Telegram Extension accepts only private text from the paired owner and never sends hidden reasoning or raw tool results to Telegram.
 
 Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 

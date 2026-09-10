@@ -3,28 +3,20 @@ coverage/
 dist/
 *.tgz
 
-# User configuration and credentials
-telegrampi.json
+# Pi Telegram Extension local credentials
+.pi/pi-telegram-extension.local.json
+pi-telegram-extension.local.json
 .env
 .env.*
 *.key
 *.pem
 *.p12
 *.pfx
-**/local.settings.json
-**/ServiceHost.credentials.json
-
-# .NET build and IDE output
-**/bin/
-**/obj/
-**/TestResults/
-.vs/
-.vscode/
-*.user
 
 # Runtime output
 logs/
 *.log
 
+.vscode/
 .DS_Store
 Thumbs.db

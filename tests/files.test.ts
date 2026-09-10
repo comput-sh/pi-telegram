@@ -11,7 +11,7 @@ import {
 } from "../src/files.ts";
 
 test("resolveTelegramProjectFile accepts ordinary files inside the project", async () => {
-  const project = await mkdtemp(join(tmpdir(), "telegrampi-files-"));
+  const project = await mkdtemp(join(tmpdir(), "pi-telegram-extension-files-"));
   try {
     await mkdir(join(project, "artifacts"));
     await writeFile(join(project, "artifacts", "report.txt"), "hello", "utf8");
@@ -29,7 +29,7 @@ test("resolveTelegramProjectFile accepts ordinary files inside the project", asy
 });
 
 test("resolveTelegramProjectFile rejects paths outside the active project", async () => {
-  const parent = await mkdtemp(join(tmpdir(), "telegrampi-files-"));
+  const parent = await mkdtemp(join(tmpdir(), "pi-telegram-extension-files-"));
   const project = join(parent, "project");
   try {
     await mkdir(project);
@@ -44,11 +44,11 @@ test("resolveTelegramProjectFile rejects paths outside the active project", asyn
 });
 
 test("resolveTelegramProjectFile blocks credential-like files", async () => {
-  const project = await mkdtemp(join(tmpdir(), "telegrampi-files-"));
+  const project = await mkdtemp(join(tmpdir(), "pi-telegram-extension-files-"));
   try {
     for (const fileName of [
       "local.settings.json",
-      "telegrampi.json",
+      "pi-telegram-extension.local.json",
       ".env.production",
       "client.pem",
     ]) {
@@ -64,7 +64,7 @@ test("resolveTelegramProjectFile blocks credential-like files", async () => {
 });
 
 test("resolveTelegramProjectFile rejects documents larger than Telegram's limit", async () => {
-  const project = await mkdtemp(join(tmpdir(), "telegrampi-files-"));
+  const project = await mkdtemp(join(tmpdir(), "pi-telegram-extension-files-"));
   try {
     const path = join(project, "large.bin");
     const handle = await open(path, "w");

@@ -48,8 +48,8 @@ function assertSafeRelativePath(relativePath: string): void {
   const isCredentialFile =
     fileName === "local.settings.json" ||
     fileName === "servicehost.credentials.json" ||
-    fileName === "telegrampi.json" ||
-    fileName === "telegrampi.key";
+    fileName === "pi-telegram-extension.local.json" ||
+    fileName === "pi-telegram-extension.settings.json";
 
   if (
     segments.includes(".git") ||
@@ -57,7 +57,9 @@ function assertSafeRelativePath(relativePath: string): void {
     isPrivateKey ||
     isCredentialFile
   ) {
-    throw new Error("TelegramPi will not send credential or repository-internal files.");
+    throw new Error(
+      "Pi Telegram Extension will not send credential or repository-internal files.",
+    );
   }
 }
 

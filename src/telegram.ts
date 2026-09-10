@@ -14,7 +14,7 @@ const DRAFT_REFRESH_INTERVAL_MS = 5_000;
 const DRAFT_STREAM_INTERVAL_MS = 1_500;
 const PROGRESS_LINE_LIMIT = 512;
 const TELEGRAM_HELP = [
-  "TelegramPi controls",
+  "Pi Telegram Extension controls",
   "",
   "Normal message: follow-up",
   "!message or /steer message: steer active work",
@@ -233,7 +233,7 @@ export class TelegramSessionConnection {
 
   async configureCommandMenu(): Promise<void> {
     const commands = [
-      { command: "help", description: "Show TelegramPi controls" },
+      { command: "help", description: "Show Pi Telegram Extension controls" },
       { command: "status", description: "Show the connected Pi session" },
       { command: "steer", description: "Steer active work: /steer message" },
       { command: "stop", description: "Cancel the current Telegram task" },
