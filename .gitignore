@@ -1,0 +1,30 @@
+node_modules/
+coverage/
+dist/
+*.tgz
+
+# User configuration and credentials
+telegrampi.json
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+**/local.settings.json
+**/ServiceHost.credentials.json
+
+# .NET build and IDE output
+**/bin/
+**/obj/
+**/TestResults/
+.vs/
+.vscode/
+*.user
+
+# Runtime output
+logs/
+*.log
+
+.DS_Store
+Thumbs.db
