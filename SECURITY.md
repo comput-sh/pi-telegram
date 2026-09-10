@@ -13,4 +13,6 @@ Include the affected version, impact, and minimal reproduction details. Do not i
 - Project bot credentials are stored in `<project>/.pi/pi-telegram.local.json`.
 - Tokens are entered only through hidden local UI and must never be sent through chat or model-callable tool arguments.
 - Rotate any credential that has entered logs, chat transcripts, Git history, or package archives.
-- Configuring a bot for local polling removes its existing Telegram webhook.
+- Configuring a bot for local polling removes its existing Telegram webhook only after explicit confirmation.
+- Project credential writes reject symbolic paths and files already tracked by Git.
+- Manager polling is serialized with a private lock and one persisted pending request.

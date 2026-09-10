@@ -11,6 +11,7 @@ import {
   normalizeBotUsername,
   saveGlobalSettings,
   saveProjectSettings,
+  withManagerLock,
   type GlobalSettings,
   type ProjectBotSettings,
 } from "./config.ts";
@@ -178,6 +179,76 @@ export default function piTelegram(pi: ExtensionAPI): void {
     }
   };
 
+  const clearCompletedManagerPending = async (
+    bot: ProjectBotSettings,
+  ): Promise<void> => {
+    const settings = await loadGlobalSettings();
+    if (
+      settings?.provisioningMode !== "manager" ||
+      settings.manager.pending?.username.toLowerCase() !== bot.username.toLowerCase()
+    ) {
+      return;
+    }
+    await withManagerLock(async () => {
+      const current = await loadGlobalSettings();
+      if (
+        current?.provisioningMode !== "manager" ||
+        current.manager.pending?.username.toLowerCase() !== bot.username.toLowerCase()
+      ) {
+        return;
+      }
+      const { pending: _completed, ...manager } = current.manager;
+      await saveGlobalSettings({ ...current, manager });
+    });
+  };
+
+  const replaceWithManualBot = async (
+    ctx: ExtensionContext,
+  ): Promise<ProjectBotSettings | undefined> => {
+    const previousBot = connectedBot ?? (await loadProjectSettings(ctx.cwd));
+    if (previousBot) {
+      const confirmed = await ctx.ui.confirm(
+        `Replace @${previousBot.username} for this project?`,
+        "The current Telegram polling connection will stop while the replacement bot is validated and paired.",
+      );
+      if (!confirmed) return undefined;
+    }
+
+    const previousConnection = connection;
+    if (previousConnection) {
+      connection = undefined;
+      connectedBot = undefined;
+      clearStatus(ctx);
+      await previousConnection.stop();
+    }
+
+    try {
+      const replacement = await configureManualProjectBot(ctx);
+      if (replacement) {
+        await connectBot(replacement, ctx);
+        return replacement;
+      }
+      if (previousBot && !connection) await connectBot(previousBot, ctx);
+      return undefined;
+    } catch (error) {
+      if (previousBot && !connection) {
+        await saveProjectSettings(ctx.cwd, previousBot).catch((restoreError) => {
+          const message =
+            restoreError instanceof Error ? restoreError.message : String(restoreError);
+          ctx.ui.notify(`Previous Telegram settings could not be restored: ${message}`, "error");
+        });
+        await connectBot(previousBot, ctx).catch((reconnectError) => {
+          const message =
+            reconnectError instanceof Error
+              ? reconnectError.message
+              : String(reconnectError);
+          ctx.ui.notify(`Previous Telegram bot could not reconnect: ${message}`, "warning");
+        });
+      }
+      throw error;
+    }
+  };
+
   pi.on("session_start", async (_event, ctx) => {
     const latestAssistant = findLatestAssistantText(ctx.sessionManager.getBranch());
     lastDeliveredAssistantEntryId = latestAssistant?.entryId;
@@ -188,7 +259,13 @@ export default function piTelegram(pi: ExtensionAPI): void {
 
     try {
       const configured = await ensureInitialConfiguration(ctx);
-      if (configured.project) await connectBot(configured.project, ctx);
+      if (configured.project) {
+        await clearCompletedManagerPending(configured.project).catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(`Pending manager cleanup failed: ${message}`, "warning");
+        });
+        await connectBot(configured.project, ctx);
+      }
     } catch (error) {
       connection = undefined;
       connectedBot = undefined;
@@ -367,8 +444,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
         };
         await saveGlobalSettings(settings);
         ctx.ui.notify(`Manual mode saved in ${getGlobalSettingsPath()}.`, "info");
-        const bot = await configureManualProjectBot(ctx);
-        if (bot && !connection) await connectBot(bot, ctx);
+        await replaceWithManualBot(ctx);
       }
     },
   });
@@ -383,15 +459,32 @@ export default function piTelegram(pi: ExtensionAPI): void {
   pi.registerCommand("telegram-setup-bot", {
     description: "Configure a manually provisioned bot for this project",
     handler: async (_args, ctx) => {
-      if (connection) {
-        ctx.ui.notify(
-          "Restart or reload Pi before replacing the connected project bot.",
-          "warning",
+      await replaceWithManualBot(ctx);
+    },
+  });
+
+  pi.registerCommand("telegram-cancel-managed-bot", {
+    description: "Cancel the globally pending managed-bot request",
+    handler: async (_args, ctx) => {
+      await withManagerLock(async () => {
+        const settings = await loadGlobalSettings();
+        if (!settings || settings.provisioningMode !== "manager") {
+          ctx.ui.notify("Telegram manager mode is not configured.", "info");
+          return;
+        }
+        if (!settings.manager.pending) {
+          ctx.ui.notify("No managed-bot request is pending.", "info");
+          return;
+        }
+        const confirmed = await ctx.ui.confirm(
+          `Cancel setup for @${settings.manager.pending.username}?`,
+          "This only clears Pi Telegram's local pending request. It does not delete a bot already created in Telegram.",
         );
-        return;
-      }
-      const bot = await configureManualProjectBot(ctx);
-      if (bot) await connectBot(bot, ctx);
+        if (!confirmed) return;
+        const { pending: _cancelled, ...manager } = settings.manager;
+        await saveGlobalSettings({ ...settings, manager });
+        ctx.ui.notify("Pending managed-bot setup cancelled.", "info");
+      });
     },
   });
 
@@ -451,6 +544,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
 
       const existing = await loadProjectSettings(ctx.cwd);
       if (existing) {
+        await clearCompletedManagerPending(existing).catch(() => undefined);
         const delivered = await connectBot(existing, ctx);
         return {
           content: [
@@ -497,7 +591,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
         };
       }
 
-      if (!params.botUsername?.trim()) {
+      if (!params.botUsername?.trim() && !global.manager.pending) {
         return {
           content: [
             {
@@ -508,54 +602,121 @@ export default function piTelegram(pi: ExtensionAPI): void {
           details: { status: "username_required" },
         };
       }
-      const username = normalizeBotUsername(params.botUsername);
+
+      const requestedUsername = normalizeBotUsername(
+        params.botUsername?.trim() || global.manager.pending!.username,
+      );
       const requestSignal = signal
         ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
         : AbortSignal.timeout(20_000);
-      const managed = await findManagedBot(global.manager, username, requestSignal);
-      if (managed.nextOffset !== global.manager.updateOffset) {
-        await saveGlobalSettings({
-          ...global,
-          manager: { ...global.manager, updateOffset: managed.nextOffset },
-        });
-      }
-      if (!managed.settings) {
-        const displayName = params.displayName?.trim() || projectName(ctx.cwd);
-        const creationUrl = createManagedBotUrl(
-          global.manager.username,
-          username,
-          displayName,
+      const result = await withManagerLock(async () => {
+        const lockedGlobal = await loadGlobalSettings();
+        if (!lockedGlobal || lockedGlobal.provisioningMode !== "manager") {
+          throw new Error("Telegram manager mode changed while provisioning.");
+        }
+        const existingPending = lockedGlobal.manager.pending;
+        if (
+          existingPending &&
+          existingPending.username.toLowerCase() !== requestedUsername.toLowerCase()
+        ) {
+          return {
+            conflict: existingPending.username,
+          } as const;
+        }
+
+        const displayName =
+          existingPending?.displayName ||
+          params.displayName?.trim() ||
+          projectName(ctx.cwd);
+        const pending =
+          existingPending ||
+          ({
+            username: requestedUsername,
+            displayName,
+            requestedAt: new Date().toISOString(),
+          } as const);
+        let manager = { ...lockedGlobal.manager, pending };
+        if (!existingPending) {
+          await saveGlobalSettings({
+            ...lockedGlobal,
+            manager,
+          });
+        }
+
+        const managed = await findManagedBot(
+          manager,
+          requestedUsername,
+          requestSignal,
         );
+        manager = { ...manager, updateOffset: managed.nextOffset };
+        if (!managed.settings) {
+          await saveGlobalSettings({ ...lockedGlobal, manager });
+          return {
+            pending,
+            creationUrl: createManagedBotUrl(
+              manager.username,
+              pending.username,
+              pending.displayName,
+            ),
+          } as const;
+        }
+
+        // Persist the child token before confirming the Telegram update offset.
+        // If the global write then fails, reprocessing the update is harmless.
+        await saveProjectSettings(ctx.cwd, managed.settings);
+        const { pending: _completed, ...managerWithoutPending } = manager;
+        await saveGlobalSettings({
+          ...lockedGlobal,
+          manager: managerWithoutPending,
+        });
+        return { settings: managed.settings } as const;
+      });
+
+      if ("conflict" in result) {
         return {
           content: [
             {
               type: "text",
-              text: `Managed bot @${username} needs owner approval. Open ${creationUrl}, approve creation, then ask the agent to enable Telegram again using the same username.`,
+              text: `Manager provisioning is already waiting for @${result.conflict}. Complete that setup or run /telegram-cancel-managed-bot locally before choosing another username.`,
+            },
+          ],
+          details: {
+            status: "pending_username_conflict",
+            pendingBotUsername: result.conflict,
+          },
+        };
+      }
+      if ("creationUrl" in result) {
+        const pending = result.pending!;
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Managed bot @${pending.username} needs owner approval. Open ${result.creationUrl}, approve creation, then ask the agent to enable Telegram again.`,
             },
           ],
           details: {
             status: "pending",
-            botUsername: username,
-            creationUrl,
+            botUsername: pending.username,
+            creationUrl: result.creationUrl,
           },
         };
       }
 
-      await saveProjectSettings(ctx.cwd, managed.settings);
-      const delivered = await connectBot(managed.settings, ctx);
+      const delivered = await connectBot(result.settings, ctx);
       return {
         content: [
           {
             type: "text",
             text: delivered
-              ? `Telegram is enabled through managed bot @${managed.settings.username}.`
-              : `Telegram is configured through @${managed.settings.username}. Open https://t.me/${managed.settings.username}, press Start, and send a message.`,
+              ? `Telegram is enabled through managed bot @${result.settings.username}.`
+              : `Telegram is configured through @${result.settings.username}. Open https://t.me/${result.settings.username}, press Start, and send a message.`,
           },
         ],
         details: {
           status: "connected",
-          botId: managed.settings.id,
-          botUsername: managed.settings.username,
+          botId: result.settings.id,
+          botUsername: result.settings.username,
           settingsPath: getProjectSettingsPath(ctx.cwd),
         },
       };

@@ -97,6 +97,11 @@ export async function configureManager(
     true,
     AbortSignal.timeout(20_000),
   );
+  const confirmed = await ctx.ui.confirm(
+    `Use @${identity.username} as the manager bot?`,
+    "Managed-bot setup uses local getUpdates polling and will remove any webhook currently configured for this manager bot.",
+  );
+  if (!confirmed) return undefined;
   const settings: GlobalSettings = {
     version: 1,
     provisioningMode: "manager",
@@ -119,6 +124,17 @@ export async function configureManualProjectBot(
 ): Promise<ProjectBotSettings | undefined> {
   const credentials = await promptBotCredentials(ctx.ui, "project");
   if (!credentials) return undefined;
+  const identity = await validateBotToken(
+    credentials.token,
+    credentials.username,
+    false,
+    AbortSignal.timeout(20_000),
+  );
+  const confirmed = await ctx.ui.confirm(
+    `Connect @${identity.username} to this project?`,
+    "Pi Telegram requires exclusive local getUpdates polling and will remove any webhook currently configured for this bot.",
+  );
+  if (!confirmed) return undefined;
   let pairingCode: string | undefined;
   const controller = new AbortController();
   const timeout = setTimeout(

@@ -29,7 +29,7 @@ Declining manager mode is persistent. Pi Telegram does not ask again unless the 
 
 This file contains the project bot's Telegram-provided ID and canonical username, token, authorized owner ID, and managed/manual origin. It applies across Pi sessions in the project but is never stored in Pi transcript/session data.
 
-Pi Telegram writes private files with restrictive permissions where the platform supports them. In Git repositories, it adds the project settings path to `.git/info/exclude`. There is intentionally no tracked project binding.
+Pi Telegram writes private files with restrictive permissions where the platform supports them. Before writing, it rejects symbolic credential paths and any project settings path already tracked by Git, then adds the path to `.git/info/exclude`. There is intentionally no tracked project binding.
 
 ## Manual-bot flow
 
@@ -54,10 +54,12 @@ First global run
   -> user confirms that a manager bot exists
   -> local hidden token prompt
   -> getMe verifies identity and can_manage_bots
+  -> user confirms that local polling may remove an existing webhook
   -> manager credentials are saved in global settings
 
 User explicitly asks to enable Telegram
   -> telegram_enable requires the exact user-chosen bot username
+  -> a global lock and pending request serialize manager use across Pi sessions
   -> Pi Telegram checks queued managed_bot updates locally
   -> if absent, return t.me/newbot/<manager>/<chosen-username> approval URL
 
@@ -67,7 +69,8 @@ User approves creation and invokes telegram_enable again
   -> child getMe verifies ID and canonical username
   -> setManagedBotAccessSettings restricts access
   -> owner comes from ManagedBotUpdated.user
-  -> save private project settings and connect
+  -> save private project settings before advancing the manager update offset
+  -> clear the pending request and connect
 ```
 
 No username is derived from the project name. There are no prefixes, hashes, truncation rules, suggestions, or project keys.
@@ -95,7 +98,8 @@ Concurrent Pi sessions using the same project bot are unsupported and fail clear
 - Manually provisioned bots are paired through an exact one-time code before an owner ID is trusted.
 - Managed-bot owner identity comes from Telegram's `ManagedBotUpdated.user` and child identity is revalidated with `getMe`.
 - Managed bots are configured with restricted access.
-- Setup deletes any existing webhook before local long polling; a bot cannot simultaneously use a webhook elsewhere.
+- Setup confirms webhook takeover before deleting an existing webhook for local long polling; a bot cannot simultaneously use a webhook elsewhere.
+- A lock file and one persisted pending username prevent concurrent sessions from consuming each other's manager updates.
 - Credential-bearing Bot API URLs are never included in errors.
 
 ## References

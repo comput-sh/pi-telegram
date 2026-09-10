@@ -10,7 +10,7 @@ Pi Telegram connects one project-specific Telegram bot to one live Pi session. I
 pi install npm:@comput/pi-telegram
 ```
 
-Until the first npm release, install directly from GitHub:
+Alternatively, install the current source directly from GitHub:
 
 ```bash
 pi install git:github.com/mbundgaard/PiTelegram
@@ -38,7 +38,7 @@ Pi Telegram can then create a managed bot after the user explicitly chooses its 
 
 Choose manual mode if you create bots yourself. That decision is saved globally, so the manager question is not shown again. Each unconfigured project asks locally for its manually created bot username and token.
 
-Pi Telegram validates the token with `getMe`, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
+Pi Telegram validates the token with `getMe`, confirms that taking over local polling may remove an existing webhook, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
 
 You can change setup later with:
 
@@ -46,7 +46,8 @@ You can change setup later with:
 |---|---|
 | `/telegram-setup` | Choose manager or manual mode |
 | `/telegram-setup-manager` | Configure or replace the global manager bot |
-| `/telegram-setup-bot` | Configure a manual bot for the current project |
+| `/telegram-setup-bot` | Configure or replace a manual bot for the current project |
+| `/telegram-cancel-managed-bot` | Cancel a pending managed-bot request |
 | `/telegram-status` | Show the current connection status |
 
 Tokens are never accepted through model tool arguments or chat.
@@ -72,7 +73,7 @@ Each project stores its complete private bot connection in:
 }
 ```
 
-The bot ID and canonical username come from Telegram. Pi Telegram adds this path to the local Git exclude file when the project is a Git repository. Never commit or share it.
+The bot ID and canonical username come from Telegram. Before writing, Pi Telegram rejects tracked or symbolic credential paths and adds the file to the repository's local Git exclude list. Never commit or share it.
 
 There is no cloud registry, Azure service, deterministic project key, or tracked bot binding.
 
@@ -82,7 +83,7 @@ In manager mode, tell Pi:
 
 > Enable Telegram using @MyChosenBot.
 
-If no username was supplied, `telegram_enable` asks for the exact username instead of inventing one. Open the returned approval link, approve creation in Telegram, and ask Pi to enable Telegram again with the same username. Pi Telegram obtains and verifies the managed-bot token locally, restricts access, saves the project settings, and connects.
+If no username was supplied, `telegram_enable` asks for the exact username instead of inventing one. Only one managed-bot request can be pending globally. Open the returned approval link, approve creation in Telegram, and ask Pi to enable Telegram again. Pi Telegram obtains and verifies the managed-bot token locally, restricts access, saves the project settings, and connects.
 
 ## Telegram controls
 

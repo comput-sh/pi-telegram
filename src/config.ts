@@ -1,13 +1,17 @@
 import { execFile } from "node:child_process";
 import {
   chmod,
+  lstat,
   mkdir,
+  open,
   readFile,
   rename,
+  rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -24,9 +28,16 @@ export interface TelegramBotIdentity {
   username: string;
 }
 
+export interface PendingManagedBot {
+  username: string;
+  displayName: string;
+  requestedAt: string;
+}
+
 export interface ManagerBotSettings extends TelegramBotIdentity {
   token: string;
   updateOffset?: number;
+  pending?: PendingManagedBot;
 }
 
 export type GlobalSettings =
@@ -75,6 +86,12 @@ export function getGlobalSettingsPath(
   );
 }
 
+export function getManagerLockPath(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return join(dirname(getGlobalSettingsPath(env)), "manager.lock");
+}
+
 export function getProjectSettingsPath(cwd: string): string {
   return resolve(cwd, PROJECT_SETTINGS_RELATIVE_PATH);
 }
@@ -117,11 +134,32 @@ function validateManager(value: unknown): ManagerBotSettings {
   ) {
     throw new Error("Manager bot updateOffset is invalid.");
   }
+  const pending = manager.pending as Partial<PendingManagedBot> | undefined;
+  if (
+    pending !== undefined &&
+    (typeof pending.username !== "string" ||
+      typeof pending.displayName !== "string" ||
+      !pending.displayName.trim() ||
+      pending.displayName.trim().length > 64 ||
+      typeof pending.requestedAt !== "string" ||
+      !Number.isFinite(Date.parse(pending.requestedAt)))
+  ) {
+    throw new Error("Pending managed-bot settings are invalid.");
+  }
   return {
     id: normalizeTelegramId(manager.id, "Manager bot ID"),
     username: normalizeBotUsername(manager.username),
     token: normalizeToken(manager.token, "Manager bot token"),
     ...(offset === undefined ? {} : { updateOffset: Number(offset) }),
+    ...(pending === undefined
+      ? {}
+      : {
+          pending: {
+            username: normalizeBotUsername(pending.username!),
+            displayName: pending.displayName!.trim(),
+            requestedAt: new Date(pending.requestedAt!).toISOString(),
+          },
+        }),
   };
 }
 
@@ -195,10 +233,48 @@ async function writePrivateJson(path: string, value: unknown): Promise<void> {
     await rename(temporary, path);
     await chmod(path, 0o600).catch(() => undefined);
   } catch (error) {
-    await import("node:fs/promises")
-      .then(({ rm }) => rm(temporary, { force: true }))
-      .catch(() => undefined);
+    await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
+  }
+}
+
+export async function withManagerLock<T>(
+  operation: () => Promise<T>,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<T> {
+  const lockPath = getManagerLockPath(env);
+  await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 });
+  let handle;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      handle = await open(lockPath, "wx", 0o600);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      const information = await stat(lockPath).catch(() => undefined);
+      if (
+        attempt === 0 &&
+        information &&
+        Date.now() - information.mtimeMs > 120_000
+      ) {
+        await rm(lockPath, { force: true });
+        continue;
+      }
+      throw new Error(
+        "Another Pi session is configuring a managed Telegram bot. Try again when it finishes.",
+      );
+    }
+  }
+  if (!handle) throw new Error("Unable to acquire the Telegram manager lock.");
+  try {
+    await handle.writeFile(
+      `${JSON.stringify({ pid: process.pid, createdAt: new Date().toISOString() })}\n`,
+      "utf8",
+    );
+    return await operation();
+  } finally {
+    await handle.close().catch(() => undefined);
+    await rm(lockPath, { force: true }).catch(() => undefined);
   }
 }
 
@@ -244,6 +320,8 @@ export async function saveProjectSettings(
     },
     path,
   );
+  await assertSafeProjectSettingsPath(cwd, path);
+  await excludeProjectSettingsFromGit(cwd, path);
   await writePrivateJson(path, {
     version: 1,
     bot: {
@@ -254,30 +332,87 @@ export async function saveProjectSettings(
       managed: validated.managed,
     },
   });
-  await excludeProjectSettingsFromGit(cwd);
 }
 
-async function excludeProjectSettingsFromGit(cwd: string): Promise<void> {
-  try {
-    const { stdout } = await execFileAsync(
-      "git",
-      ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
-      { cwd, windowsHide: true },
-    );
-    const excludePath = stdout.trim();
-    if (!excludePath) return;
-    let existing = "";
+async function assertSafeProjectSettingsPath(
+  cwd: string,
+  path: string,
+): Promise<void> {
+  const privateDirectory = dirname(path);
+  for (const candidate of [privateDirectory, path]) {
     try {
-      existing = await readFile(excludePath, "utf8");
+      if ((await lstat(candidate)).isSymbolicLink()) {
+        throw new Error(
+          `Refusing to store Telegram credentials through symbolic path ${candidate}.`,
+        );
+      }
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
     }
-    const pattern = "/.pi/pi-telegram.local.json";
-    if (existing.split(/\r?\n/).includes(pattern)) return;
-    await mkdir(dirname(excludePath), { recursive: true });
-    const separator = existing && !existing.endsWith("\n") ? "\n" : "";
-    await writeFile(excludePath, `${existing}${separator}${pattern}\n`, "utf8");
-  } catch {
-    // Non-Git projects still keep the clearly local-only filename.
   }
+
+  let repositoryRoot: string;
+  try {
+    repositoryRoot = (
+      await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+        cwd,
+        windowsHide: true,
+      })
+    ).stdout.trim();
+  } catch {
+    return;
+  }
+  const repositoryRelativePath = relative(repositoryRoot, path).replace(/\\/g, "/");
+  try {
+    await execFileAsync(
+      "git",
+      ["ls-files", "--error-unmatch", "--", repositoryRelativePath],
+      { cwd: repositoryRoot, windowsHide: true },
+    );
+  } catch (error) {
+    if (Number((error as { code?: unknown }).code) === 1) return;
+    throw error;
+  }
+  throw new Error(
+    `Refusing to store Telegram credentials because ${repositoryRelativePath} is tracked by Git. Remove it from the index first.`,
+  );
+}
+
+async function excludeProjectSettingsFromGit(
+  cwd: string,
+  path: string,
+): Promise<void> {
+  let repositoryRoot: string;
+  let excludePath: string;
+  try {
+    repositoryRoot = (
+      await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+        cwd,
+        windowsHide: true,
+      })
+    ).stdout.trim();
+    excludePath = (
+      await execFileAsync(
+        "git",
+        ["rev-parse", "--path-format=absolute", "--git-path", "info/exclude"],
+        { cwd, windowsHide: true },
+      )
+    ).stdout.trim();
+  } catch {
+    return;
+  }
+  if (!excludePath) return;
+  let existing = "";
+  try {
+    existing = await readFile(excludePath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const relativePath = relative(repositoryRoot, path).replace(/\\/g, "/");
+  const pattern = `/${relativePath}`;
+  if (existing.split(/\r?\n/).includes(pattern)) return;
+  await mkdir(dirname(excludePath), { recursive: true });
+  const separator = existing && !existing.endsWith("\n") ? "\n" : "";
+  await writeFile(excludePath, `${existing}${separator}${pattern}\n`, "utf8");
 }
