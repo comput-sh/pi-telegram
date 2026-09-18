@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,15 +9,36 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 import {
+  assignProjectBot,
+  findSessionBot,
   getGlobalSettingsPath,
   getProjectSettingsPath,
   loadGlobalSettings,
   loadProjectSettings,
   normalizeBotUsername,
+  releaseProjectBot,
+  removeProjectBot,
   saveGlobalSettings,
   saveProjectSettings,
+  upsertAndAssignProjectBot,
   withManagerLock,
 } from "../src/config.ts";
+
+function projectSettings() {
+  return {
+    version: 2 as const,
+    bots: [
+      {
+        id: "987654321",
+        username: "ChosenProjectBot",
+        token: "test-project-token",
+        ownerUserId: "123456789",
+        managed: false,
+        sessionId: "session-main",
+      },
+    ],
+  };
+}
 
 test("global manual mode is saved without manager credentials", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
@@ -35,7 +56,7 @@ test("global manual mode is saved without manager credentials", async () => {
   }
 });
 
-test("global manager identity and token are stored together in settings", async () => {
+test("global manager settings include pending and known managed bots", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
   const path = join(directory, "settings.json");
   const env = { PI_TELEGRAM_SETTINGS: path };
@@ -53,58 +74,140 @@ test("global manager identity and token are stored together in settings", async 
           displayName: "Chosen Managed Bot",
           requestedAt: "2026-09-10T00:00:00.000Z",
         },
+        knownBots: [
+          {
+            id: "400500600",
+            username: "ChosenManagedBot",
+            ownerUserId: "123456789",
+            lastSeenAt: "2026-09-10T00:01:00.000Z",
+          },
+        ],
       },
     };
     await saveGlobalSettings(settings, env);
     assert.deepEqual(await loadGlobalSettings(env), settings);
-
-    const updated = {
-      ...settings,
-      manager: { ...settings.manager, updateOffset: 43 },
-    };
-    await saveGlobalSettings(updated, env);
-    assert.deepEqual(await loadGlobalSettings(env), updated);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("project bot settings are private project-local state", async () => {
+test("project bot settings store multiple private session assignments", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-telegram-project-"));
   try {
-    const settings = {
-      version: 1 as const,
-      id: "987654321",
-      username: "ChosenProjectBot",
-      token: "test-project-token",
-      ownerUserId: "123456789",
-      managed: false,
-    };
+    const settings = projectSettings();
     await saveProjectSettings(directory, settings);
     assert.equal(
       getProjectSettingsPath(directory),
       join(directory, ".pi", "pi-telegram.local.json"),
     );
     assert.deepEqual(await loadProjectSettings(directory), settings);
-    const savedFile = JSON.parse(
-      await readFile(getProjectSettingsPath(directory), "utf8"),
+    assert.deepEqual(
+      JSON.parse(await readFile(getProjectSettingsPath(directory), "utf8")),
+      settings,
     );
-    assert.deepEqual(savedFile, {
-      version: 1,
-      bot: {
-        id: "987654321",
-        username: "ChosenProjectBot",
-        token: "test-project-token",
-        ownerUserId: "123456789",
-        managed: false,
-      },
-    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("configuration rejects legacy or malformed shapes", async () => {
+test("assignment moves a bot and preserves all project credentials", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-project-"));
+  try {
+    await saveProjectSettings(directory, {
+      version: 2,
+      bots: [
+        ...projectSettings().bots,
+        {
+          id: "111222333",
+          username: "ResearchProjectBot",
+          token: "research-token",
+          ownerUserId: "123456789",
+          managed: true,
+          sessionId: "session-research",
+        },
+      ],
+    });
+    const assigned = await assignProjectBot(
+      directory,
+      "987654321",
+      "session-research",
+    );
+    assert.equal(assigned.sessionId, "session-research");
+    const updated = (await loadProjectSettings(directory))!;
+    assert.equal(findSessionBot(updated, "session-research")?.id, "987654321");
+    assert.equal(updated.bots.find((bot) => bot.id === "111222333")?.sessionId, null);
+    assert.equal(updated.bots.length, 2);
+
+    assert.equal(
+      await releaseProjectBot(directory, "987654321", "session-main"),
+      false,
+    );
+    assert.equal(
+      await releaseProjectBot(directory, "987654321", "session-research"),
+      true,
+    );
+    assert.equal(
+      (await loadProjectSettings(directory))!.bots.find(
+        (bot) => bot.id === "987654321",
+      )?.sessionId,
+      null,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("removing a bot deletes only the selected project credentials", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-project-"));
+  try {
+    await saveProjectSettings(directory, {
+      version: 2,
+      bots: [
+        ...projectSettings().bots,
+        {
+          id: "111222333",
+          username: "ResearchProjectBot",
+          token: "research-token",
+          ownerUserId: "123456789",
+          managed: true,
+          sessionId: null,
+        },
+      ],
+    });
+    const removed = await removeProjectBot(directory, "111222333");
+    assert.equal(removed?.username, "ResearchProjectBot");
+    assert.deepEqual((await loadProjectSettings(directory))!.bots, projectSettings().bots);
+    assert.equal(await removeProjectBot(directory, "111222333"), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("upserting a bot updates credentials and assigns only one bot to a session", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-project-"));
+  try {
+    await saveProjectSettings(directory, projectSettings());
+    await upsertAndAssignProjectBot(
+      directory,
+      {
+        id: "111222333",
+        username: "ResearchProjectBot",
+        token: "research-token",
+        ownerUserId: "123456789",
+        managed: true,
+      },
+      "session-main",
+    );
+    const settings = (await loadProjectSettings(directory))!;
+    assert.equal(settings.bots.length, 2);
+    assert.equal(findSessionBot(settings, "session-main")?.id, "111222333");
+    assert.equal(settings.bots.find((bot) => bot.id === "987654321")?.sessionId, null);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("legacy settings load unassigned and duplicate session assignments are rejected", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-telegram-config-"));
   const path = join(directory, "settings.json");
   try {
@@ -116,6 +219,49 @@ test("configuration rejects legacy or malformed shapes", async () => {
     await assert.rejects(
       () => loadGlobalSettings({ PI_TELEGRAM_SETTINGS: path }),
       /settings .* are invalid/i,
+    );
+
+    await import("node:fs/promises").then(({ mkdir }) =>
+      mkdir(join(directory, ".pi"), { recursive: true }),
+    );
+    const legacy = projectSettings().bots[0]!;
+    await writeFile(
+      getProjectSettingsPath(directory),
+      JSON.stringify({
+        version: 1,
+        bot: {
+          id: legacy.id,
+          username: legacy.username,
+          token: legacy.token,
+          ownerUserId: legacy.ownerUserId,
+          managed: legacy.managed,
+        },
+      }),
+      "utf8",
+    );
+    assert.deepEqual(await loadProjectSettings(directory), {
+      version: 2,
+      bots: [{ ...legacy, sessionId: null }],
+    });
+
+    await writeFile(
+      getProjectSettingsPath(directory),
+      JSON.stringify({
+        version: 2,
+        bots: [
+          legacy,
+          {
+            ...legacy,
+            id: "111222333",
+            username: "OtherProjectBot",
+          },
+        ],
+      }),
+      "utf8",
+    );
+    await assert.rejects(
+      () => loadProjectSettings(directory),
+      /assign multiple bots to one Pi session/,
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -137,16 +283,34 @@ test("manager operations are serialized by a global lock", async () => {
   }
 });
 
+test("global credential settings are excluded before writing and tracked paths are rejected", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "pi-telegram-global-git-"));
+  const path = join(directory, "private", "settings.json");
+  const env = { PI_TELEGRAM_SETTINGS: path };
+  try {
+    await execFileAsync("git", ["init"], { cwd: directory });
+    await saveGlobalSettings({ version: 1, provisioningMode: "manual" }, env);
+    const ignored = await execFileAsync(
+      "git",
+      ["check-ignore", "private/settings.json"],
+      { cwd: directory },
+    );
+    assert.match(ignored.stdout, /private\/settings\.json/);
+    await execFileAsync("git", ["add", "-f", "private/settings.json"], {
+      cwd: directory,
+    });
+    await assert.rejects(
+      () => saveGlobalSettings({ version: 1, provisioningMode: "manual" }, env),
+      /is tracked by Git/,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("project settings are excluded before writing and tracked paths are rejected", async () => {
   const directory = await mkdtemp(join(tmpdir(), "pi-telegram-git-"));
-  const settings = {
-    version: 1 as const,
-    id: "987654321",
-    username: "ChosenProjectBot",
-    token: "test-project-token",
-    ownerUserId: "123456789",
-    managed: false,
-  };
+  const settings = projectSettings();
   try {
     await execFileAsync("git", ["init"], { cwd: directory });
     await saveProjectSettings(directory, settings);
@@ -176,9 +340,7 @@ test("project settings reject a symbolic private directory", async (t) => {
   const target = await mkdtemp(join(tmpdir(), "pi-telegram-target-"));
   try {
     try {
-      await import("node:fs/promises").then(({ symlink }) =>
-        symlink(target, join(directory, ".pi"), "junction"),
-      );
+      await symlink(target, join(directory, ".pi"), "junction");
     } catch (error) {
       if (["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code || "")) {
         t.skip("Symbolic links are unavailable on this host");
@@ -187,15 +349,7 @@ test("project settings reject a symbolic private directory", async (t) => {
       throw error;
     }
     await assert.rejects(
-      () =>
-        saveProjectSettings(directory, {
-          version: 1,
-          id: "987654321",
-          username: "ChosenProjectBot",
-          token: "test-project-token",
-          ownerUserId: "123456789",
-          managed: false,
-        }),
+      () => saveProjectSettings(directory, projectSettings()),
       /symbolic path/,
     );
   } finally {

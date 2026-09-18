@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { resolveTelegramProjectFile } from "../src/files.ts";
 
 import {
   parseTelegramBotCommand,
@@ -27,8 +28,8 @@ test("reload is rejected with a direct reply while Pi is busy", async () => {
   globalThis.fetch = (async (input, init) => {
     const method = String(input).split("/").at(-1)!;
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    if (method === "deleteWebhook") {
-      return new Response(JSON.stringify({ ok: true, result: true }));
+    if (method === "getWebhookInfo") {
+      return new Response(JSON.stringify({ ok: true, result: { url: "" } }));
     }
     if (method === "getUpdates") {
       getUpdatesCalls += 1;
@@ -246,12 +247,7 @@ test("sendDocument uploads a native Telegram document with an optional caption",
   try {
     const connection = new TelegramSessionConnection("test-token", 42);
     await connection.sendDocument(
-      {
-        path,
-        fileName: "report.txt",
-        contentType: "text/plain",
-        size: 15,
-      },
+      await resolveTelegramProjectFile(directory, path),
       "Report ready",
     );
 

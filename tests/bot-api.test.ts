@@ -26,11 +26,7 @@ test("validateBotToken gets the canonical identity and manager capability", asyn
     })) as typeof fetch;
   try {
     assert.deepEqual(
-      await validateBotToken(
-        "manager-token",
-        "@CanonicalManagerBot",
-        true,
-      ),
+      await validateBotToken("manager-token", "@CanonicalManagerBot", true),
       {
         id: "123456",
         username: "CanonicalManagerBot",
@@ -45,7 +41,11 @@ test("validateBotToken gets the canonical identity and manager capability", asyn
 test("validateBotToken rejects a username mismatch and non-manager", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    ok({ id: 123, is_bot: true, username: "ActualProjectBot" })) as typeof fetch;
+    ok({
+      id: 123,
+      is_bot: true,
+      username: "ActualProjectBot",
+    })) as typeof fetch;
   try {
     await assert.rejects(
       () => validateBotToken("token", "ExpectedProjectBot"),
@@ -78,7 +78,7 @@ test("findManagedBot obtains, verifies, and restricts a matching child bot", asy
     const method = /\/([^/]+)$/.exec(String(input))?.[1] || "";
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     calls.push({ method, body });
-    if (method === "deleteWebhook") return ok(true);
+    if (method === "getWebhookInfo") return ok({ url: "" });
     if (method === "getUpdates") {
       return ok([
         {
@@ -111,13 +111,22 @@ test("findManagedBot obtains, verifies, and restricts a matching child bot", asy
     );
     assert.equal(result.nextOffset, 78);
     assert.deepEqual(result.settings, {
-      version: 1,
       id: "999",
       username: "UserChosenBot",
       token: "child-token",
       ownerUserId: "555",
       managed: true,
     });
+    assert.equal(result.observedBots.length, 1);
+    assert.deepEqual(
+      { ...result.observedBots[0], lastSeenAt: "normalized" },
+      {
+        id: "999",
+        username: "UserChosenBot",
+        ownerUserId: "555",
+        lastSeenAt: "normalized",
+      },
+    );
     assert.deepEqual(
       calls.find((call) => call.method === "setManagedBotAccessSettings")?.body,
       { user_id: 999, is_access_restricted: true, added_user_ids: [] },
@@ -136,7 +145,7 @@ test("manual pairing accepts only the exact private pairing code", async () => {
     if (method === "getMe") {
       return ok({ id: 321, is_bot: true, username: "ManualProjectBot" });
     }
-    if (method === "deleteWebhook") return ok(true);
+    if (method === "getWebhookInfo") return ok({ url: "" });
     if (method === "getUpdates") {
       updatesCalls += 1;
       if (updatesCalls === 1) return ok([]);
@@ -165,7 +174,6 @@ test("manual pairing accepts only the exact private pairing code", async () => {
     );
     assert.match(code, /^pair-\d{6}$/);
     assert.deepEqual(settings, {
-      version: 1,
       id: "321",
       username: "ManualProjectBot",
       token: "manual-token",

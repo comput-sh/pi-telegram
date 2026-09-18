@@ -1,8 +1,8 @@
 import { randomInt } from "node:crypto";
-import { readFile } from "node:fs/promises";
 
 import {
   TELEGRAM_DOCUMENT_LIMIT,
+  readTelegramProjectFile,
   validateDocumentCaption,
   type TelegramProjectFile,
 } from "./files.ts";
@@ -25,13 +25,37 @@ const TELEGRAM_HELP = [
 ].join("\n");
 
 const AI_ACTIONS = {
-  thinking: { customEmojiId: "5535034915403333642", icon: "💭", label: "Thinking" },
-  responding: { customEmojiId: "5573451671289200650", icon: "✍️", label: "Writing a response" },
+  thinking: {
+    customEmojiId: "5535034915403333642",
+    icon: "💭",
+    label: "Thinking",
+  },
+  responding: {
+    customEmojiId: "5573451671289200650",
+    icon: "✍️",
+    label: "Writing a response",
+  },
   web: { customEmojiId: "5535365052359507996", icon: "🌐", label: "Browsing" },
-  reading: { customEmojiId: "5537207975581581325", icon: "📖", label: "Reading files" },
-  searching: { customEmojiId: "5534951812081123354", icon: "🔎", label: "Searching" },
-  terminal: { customEmojiId: "5537514855289847815", icon: "🖥️", label: "Running a command" },
-  editing: { customEmojiId: "5537247356136718385", icon: "✏️", label: "Editing files" },
+  reading: {
+    customEmojiId: "5537207975581581325",
+    icon: "📖",
+    label: "Reading files",
+  },
+  searching: {
+    customEmojiId: "5534951812081123354",
+    icon: "🔎",
+    label: "Searching",
+  },
+  terminal: {
+    customEmojiId: "5537514855289847815",
+    icon: "🖥️",
+    label: "Running a command",
+  },
+  editing: {
+    customEmojiId: "5537247356136718385",
+    icon: "✏️",
+    label: "Editing files",
+  },
 } as const;
 
 type DraftActivity = keyof typeof AI_ACTIONS;
@@ -123,15 +147,28 @@ function activityForTool(toolName?: string): DraftActivity {
   if (!toolName) return "thinking";
   const normalized = toolName.toLowerCase();
   if (normalized === "responding") return "responding";
-  if (normalized.includes("browser") || normalized.includes("web")) return "web";
+  if (normalized.includes("browser") || normalized.includes("web"))
+    return "web";
   if (normalized === "read") return "reading";
-  if (normalized.includes("grep") || normalized.includes("find") || normalized.includes("search")) {
+  if (
+    normalized.includes("grep") ||
+    normalized.includes("find") ||
+    normalized.includes("search")
+  ) {
     return "searching";
   }
-  if (normalized === "bash" || normalized.includes("shell") || normalized.includes("powershell")) {
+  if (
+    normalized === "bash" ||
+    normalized.includes("shell") ||
+    normalized.includes("powershell")
+  ) {
     return "terminal";
   }
-  if (normalized === "edit" || normalized === "write" || normalized.includes("code")) {
+  if (
+    normalized === "edit" ||
+    normalized === "write" ||
+    normalized.includes("code")
+  ) {
     return "editing";
   }
   return "thinking";
@@ -183,7 +220,9 @@ function renderProgressLine(markdown: string): string {
 
 function validateRichMarkdown(markdown: string): void {
   if (markdown.length > RICH_MESSAGE_LIMIT) {
-    throw new Error(`Telegram Rich Markdown must not exceed ${RICH_MESSAGE_LIMIT} characters.`);
+    throw new Error(
+      `Telegram Rich Markdown must not exceed ${RICH_MESSAGE_LIMIT} characters.`,
+    );
   }
 }
 
@@ -194,10 +233,26 @@ export class TelegramSessionConnection {
   private activeDraft?: ActiveDraft;
   private draftWrites: Promise<void> = Promise.resolve();
 
+  private lastDraftErrorAt = 0;
+
   constructor(
     private readonly token: string,
     private readonly ownerUserId: number,
+    private readonly options: {
+      canStop?: () => boolean;
+      onDraftError?: () => void;
+    } = {},
   ) {}
+
+  private reportDraftError(): void {
+    if (
+      this.controller.signal.aborted ||
+      Date.now() - this.lastDraftErrorAt < 30_000
+    )
+      return;
+    this.lastDraftErrorAt = Date.now();
+    this.options.onDraftError?.();
+  }
 
   get completion(): Promise<void> | undefined {
     return this.polling;
@@ -210,11 +265,15 @@ export class TelegramSessionConnection {
     onReloadRequested: () => boolean | Promise<boolean>,
   ): Promise<void> {
     const allowedUpdates = ["message"];
-    await this.call<boolean>(
-      "deleteWebhook",
-      { drop_pending_updates: false },
-      this.controller.signal,
+    const webhook = await this.call<{ url: string }>(
+      "getWebhookInfo",
+      {},
+      AbortSignal.timeout(20_000),
     );
+    if (webhook.url)
+      throw new Error(
+        "A Telegram webhook is configured. Run /telegram-start to confirm takeover.",
+      );
     const initial = await this.call<TelegramUpdate[]>(
       "getUpdates",
       { offset: -1, limit: 1, timeout: 0, allowed_updates: allowedUpdates },
@@ -290,8 +349,11 @@ export class TelegramSessionConnection {
       controller: new AbortController(),
     };
     this.activeDraft = draft;
-    await this.writeDraft(draft);
-    draft.refresh = this.refreshDraft(draft);
+    try {
+      await this.writeDraft(draft);
+    } finally {
+      draft.refresh = this.refreshDraft(draft);
+    }
   }
 
   async streamCommentaryDraft(markdown: string): Promise<void> {
@@ -351,12 +413,18 @@ export class TelegramSessionConnection {
     await this.draftWrites.catch(() => undefined);
   }
 
-  async sendPlainMessage(text: string): Promise<void> {
+  async sendPlainMessage(
+    text: string,
+    externalSignal?: AbortSignal,
+  ): Promise<void> {
     for (const chunk of splitTelegramText(text)) {
       await this.call(
         "sendMessage",
         { chat_id: this.ownerUserId, text: chunk },
-        AbortSignal.timeout(20_000),
+        AbortSignal.any([
+          AbortSignal.timeout(20_000),
+          ...(externalSignal ? [externalSignal] : []),
+        ]),
       );
     }
   }
@@ -380,7 +448,7 @@ export class TelegramSessionConnection {
     externalSignal?: AbortSignal,
   ): Promise<void> {
     const normalizedCaption = validateDocumentCaption(caption);
-    const bytes = await readFile(file.path);
+    const bytes = await readTelegramProjectFile(file);
     if (bytes.byteLength > TELEGRAM_DOCUMENT_LIMIT) {
       throw new Error("Telegram documents must not exceed 50 MB.");
     }
@@ -402,7 +470,9 @@ export class TelegramSessionConnection {
     const response = await fetch(
       `https://api.telegram.org/bot${this.token}/sendDocument`,
       { method: "POST", body: form, signal },
-    );
+    ).catch(() => {
+      throw new Error("Telegram document upload failed.");
+    });
     await this.readResponse<TelegramMessage>("sendDocument", response);
   }
 
@@ -415,15 +485,18 @@ export class TelegramSessionConnection {
     draft.streamTimer = setTimeout(() => {
       draft.streamTimer = undefined;
       if (this.activeDraft !== draft || draft.controller.signal.aborted) return;
-      void this.writeDraft(draft).catch(() => undefined);
+      void this.writeDraft(draft).catch(() => this.reportDraftError());
     }, delay);
   }
 
   private async refreshDraft(draft: ActiveDraft): Promise<void> {
-    while (!draft.controller.signal.aborted && !this.controller.signal.aborted) {
+    while (
+      !draft.controller.signal.aborted &&
+      !this.controller.signal.aborted
+    ) {
       await sleep(DRAFT_REFRESH_INTERVAL_MS, draft.controller.signal);
       if (draft.controller.signal.aborted || this.activeDraft !== draft) return;
-      await this.writeDraft(draft).catch(() => undefined);
+      await this.writeDraft(draft).catch(() => this.reportDraftError());
     }
   }
 
@@ -484,6 +557,7 @@ export class TelegramSessionConnection {
           this.controller.signal,
         );
         for (const update of updates) {
+          if (this.controller.signal.aborted) return;
           this.offset = update.update_id + 1;
 
           const message = update.message;
@@ -531,7 +605,7 @@ export class TelegramSessionConnection {
             continue;
           }
           if (commandName === "stop" || text.toLowerCase() === "stop") {
-            if (this.activeDraft) {
+            if (this.options.canStop?.() ?? false) {
               await this.cancelRichDraft();
               onStopRequested();
             } else {
@@ -539,7 +613,10 @@ export class TelegramSessionConnection {
             }
             continue;
           }
-          await onMessage({ text: message.text, messageId: message.message_id });
+          await onMessage({
+            text: message.text,
+            messageId: message.message_id,
+          });
         }
       } catch (error) {
         if (this.controller.signal.aborted) return;
@@ -568,13 +645,18 @@ export class TelegramSessionConnection {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-        signal,
+        signal: AbortSignal.any([signal, this.controller.signal]),
       },
-    );
+    ).catch(() => {
+      throw new Error(`Telegram transport ${method} failed.`);
+    });
     return this.readResponse<T>(method, response);
   }
 
-  private async readResponse<T>(method: string, response: Response): Promise<T> {
+  private async readResponse<T>(
+    method: string,
+    response: Response,
+  ): Promise<T> {
     let envelope: TelegramApiEnvelope<T> | undefined;
     try {
       envelope = (await response.json()) as TelegramApiEnvelope<T>;

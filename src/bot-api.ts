@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 
 import {
   normalizeBotUsername,
+  type KnownManagedBot,
   type ManagerBotSettings,
   type ProjectBotSettings,
   type TelegramBotIdentity,
@@ -43,9 +44,12 @@ export interface ValidatedBot extends TelegramBotIdentity {
   canManageBots: boolean;
 }
 
+export type ConfiguredProjectBot = Omit<ProjectBotSettings, "sessionId">;
+
 export interface ManagedBotResult {
-  settings?: ProjectBotSettings;
+  settings?: ConfiguredProjectBot;
   nextOffset?: number;
+  observedBots: KnownManagedBot[];
 }
 
 export async function callTelegramBotApi<T>(
@@ -54,11 +58,16 @@ export async function callTelegramBotApi<T>(
   body: Record<string, unknown> = {},
   signal: AbortSignal = AbortSignal.timeout(20_000),
 ): Promise<T> {
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-    signal,
+  const response = await fetch(
+    `https://api.telegram.org/bot${token}/${method}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal,
+    },
+  ).catch(() => {
+    throw new Error(`Telegram transport ${method} failed.`);
   });
   let envelope: TelegramApiEnvelope<T> | undefined;
   try {
@@ -84,16 +93,24 @@ export async function validateBotToken(
 ): Promise<ValidatedBot> {
   const token = tokenInput.trim();
   if (!token) throw new Error("Telegram bot token is required.");
-  const user = await callTelegramBotApi<TelegramUser>(token, "getMe", {}, signal);
+  const user = await callTelegramBotApi<TelegramUser>(
+    token,
+    "getMe",
+    {},
+    signal,
+  );
   if (!user.is_bot || !user.username) {
     throw new Error("Telegram getMe did not return a valid bot identity.");
   }
   const username = normalizeBotUsername(user.username);
   if (
     expectedUsername &&
-    normalizeBotUsername(expectedUsername).toLowerCase() !== username.toLowerCase()
+    normalizeBotUsername(expectedUsername).toLowerCase() !==
+      username.toLowerCase()
   ) {
-    throw new Error(`The token belongs to @${username}, not @${normalizeBotUsername(expectedUsername)}.`);
+    throw new Error(
+      `The token belongs to @${username}, not @${normalizeBotUsername(expectedUsername)}.`,
+    );
   }
   if (requireManager && user.can_manage_bots !== true) {
     throw new Error(`@${username} is not enabled to manage bots.`);
@@ -119,12 +136,16 @@ export async function findManagedBot(
   signal: AbortSignal,
 ): Promise<ManagedBotResult> {
   const username = normalizeBotUsername(expectedUsername);
-  await callTelegramBotApi<boolean>(
+  const webhook = await callTelegramBotApi<{ url: string }>(
     manager.token,
-    "deleteWebhook",
-    { drop_pending_updates: false },
+    "getWebhookInfo",
+    {},
     signal,
   );
+  if (webhook.url)
+    throw new Error(
+      "Confirm manager webhook takeover in local setup before polling.",
+    );
   const updates = await callTelegramBotApi<TelegramUpdate[]>(
     manager.token,
     "getUpdates",
@@ -141,31 +162,80 @@ export async function findManagedBot(
 
   let nextOffset = manager.updateOffset;
   let match: ManagedBotUpdated | undefined;
+  const observedBots: KnownManagedBot[] = [];
   for (const update of updates) {
     nextOffset = Math.max(nextOffset ?? 0, update.update_id + 1);
     const managed = update.managed_bot;
     if (
-      managed?.bot.username &&
-      managed.bot.username.toLowerCase() === username.toLowerCase()
+      !managed?.bot.username ||
+      !managed.user ||
+      managed.user.is_bot ||
+      !Number.isSafeInteger(managed.user.id) ||
+      !Number.isSafeInteger(managed.bot.id)
     ) {
+      continue;
+    }
+    observedBots.push({
+      id: String(managed.bot.id),
+      username: normalizeBotUsername(managed.bot.username),
+      ownerUserId: String(managed.user.id),
+      lastSeenAt: new Date().toISOString(),
+    });
+    if (managed.bot.username.toLowerCase() === username.toLowerCase()) {
       match = managed;
     }
   }
-  if (!match) return { nextOffset };
-  if (!match.user || match.user.is_bot || !Number.isSafeInteger(match.user.id)) {
-    throw new Error("Telegram returned an invalid managed-bot owner.");
-  }
+  if (!match) return { nextOffset, observedBots };
+  const settings = await getManagedBotSettings(
+    manager,
+    {
+      id: String(match.bot.id),
+      username,
+      ownerUserId: String(match.user.id),
+    },
+    signal,
+  );
+  return { nextOffset, observedBots, settings };
+}
 
-  const managedBotId = match.bot.id;
+export async function getManagedBotToken(
+  manager: ManagerBotSettings,
+  botId: string,
+  expectedUsername: string,
+  signal: AbortSignal,
+): Promise<{ id: string; username: string; token: string }> {
+  const managedBotId = Number(botId);
+  if (!Number.isSafeInteger(managedBotId) || managedBotId <= 0) {
+    throw new Error("The managed bot ID must be a Telegram numeric ID.");
+  }
   const token = await callTelegramBotApi<string>(
     manager.token,
     "getManagedBotToken",
     { user_id: managedBotId },
     signal,
   );
-  const identity = await validateBotToken(token, username, false, signal);
-  if (identity.id !== String(managedBotId)) {
-    throw new Error("The managed-bot token does not match Telegram's managed-bot update.");
+  const identity = await validateBotToken(
+    token,
+    expectedUsername,
+    false,
+    signal,
+  );
+  if (identity.id !== botId) {
+    throw new Error(
+      "The managed-bot token does not match the selected bot ID.",
+    );
+  }
+  return { id: identity.id, username: identity.username, token };
+}
+
+export async function restrictManagedBotAccess(
+  manager: ManagerBotSettings,
+  botId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const managedBotId = Number(botId);
+  if (!Number.isSafeInteger(managedBotId) || managedBotId <= 0) {
+    throw new Error("The managed bot ID must be a Telegram numeric ID.");
   }
   await callTelegramBotApi<boolean>(
     manager.token,
@@ -177,17 +247,24 @@ export async function findManagedBot(
     },
     signal,
   );
+}
 
+export async function getManagedBotSettings(
+  manager: ManagerBotSettings,
+  knownBot: Pick<KnownManagedBot, "id" | "username" | "ownerUserId">,
+  signal: AbortSignal,
+): Promise<ConfiguredProjectBot> {
+  const recovered = await getManagedBotToken(
+    manager,
+    knownBot.id,
+    knownBot.username,
+    signal,
+  );
+  await restrictManagedBotAccess(manager, knownBot.id, signal);
   return {
-    nextOffset,
-    settings: {
-      version: 1,
-      id: identity.id,
-      username: identity.username,
-      token,
-      ownerUserId: String(match.user.id),
-      managed: true,
-    },
+    ...recovered,
+    ownerUserId: knownBot.ownerUserId,
+    managed: true,
   };
 }
 
@@ -196,14 +273,18 @@ export async function pairManualBot(
   username: string,
   onCode: (code: string) => void,
   signal: AbortSignal,
-): Promise<ProjectBotSettings> {
+): Promise<ConfiguredProjectBot> {
   const identity = await validateBotToken(token, username, false, signal);
-  await callTelegramBotApi<boolean>(
+  const webhook = await callTelegramBotApi<{ url: string }>(
     token,
-    "deleteWebhook",
-    { drop_pending_updates: false },
+    "getWebhookInfo",
+    {},
     signal,
   );
+  if (webhook.url)
+    throw new Error(
+      "Confirm bot webhook takeover in local setup before pairing.",
+    );
   const initial = await callTelegramBotApi<TelegramUpdate[]>(
     token,
     "getUpdates",
@@ -238,7 +319,6 @@ export async function pairManualBot(
         message.chat.id === message.from.id
       ) {
         return {
-          version: 1,
           id: identity.id,
           username: identity.username,
           token: token.trim(),

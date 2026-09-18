@@ -5,31 +5,44 @@ import type {
 
 import {
   getGlobalSettingsPath,
-  getProjectSettingsPath,
   loadGlobalSettings,
-  loadProjectSettings,
   normalizeBotUsername,
   saveGlobalSettings,
-  saveProjectSettings,
+  withManagerLock,
   type GlobalSettings,
-  type ProjectBotSettings,
 } from "./config.ts";
-import { pairManualBot, validateBotToken } from "./bot-api.ts";
-
-const MANAGER_OPTION = "Yes — configure a Telegram manager bot";
-const MANUAL_OPTION = "No — I will provide each project bot manually";
+import {
+  pairManualBot,
+  validateBotToken,
+  type ConfiguredProjectBot,
+} from "./bot-api.ts";
 
 function truncate(value: string, width: number): string {
   if (width <= 0) return "";
-  return value.length <= width ? value : `${value.slice(0, Math.max(0, width - 1))}…`;
+  return value.length <= width
+    ? value
+    : `${value.slice(0, Math.max(0, width - 1))}…`;
 }
 
 export async function promptSecret(
   ui: ExtensionUIContext,
   title: string,
+  signal?: AbortSignal,
 ): Promise<string | undefined> {
+  signal?.throwIfAborted();
   return ui.custom<string | undefined>((tui, _theme, _keybindings, done) => {
     let value = "";
+    let finished = false;
+    const finish = (result: string | undefined) => {
+      if (finished) return;
+      finished = true;
+      signal?.removeEventListener("abort", abort);
+      value = "";
+      done(result);
+    };
+    const abort = () => finish(undefined);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) queueMicrotask(abort);
     return {
       render(width: number): string[] {
         const count = Math.min(value.length, Math.max(0, width - 2));
@@ -41,11 +54,11 @@ export async function promptSecret(
       },
       handleInput(data: string): void {
         if (data === "\r" || data === "\n") {
-          done(value.trim() || undefined);
+          finish(value.trim() || undefined);
           return;
         }
         if (data === "\x1b" || data === "\x03") {
-          done(undefined);
+          finish(undefined);
           return;
         }
         if (data === "\x7f" || data === "\b") {
@@ -72,132 +85,148 @@ export async function promptSecret(
 async function promptBotCredentials(
   ui: ExtensionUIContext,
   kind: "manager" | "project",
+  signal?: AbortSignal,
 ): Promise<{ username: string; token: string } | undefined> {
   const usernameInput = await ui.input(
-    kind === "manager" ? "Manager bot username" : "Project bot username",
+    kind === "manager" ? "Manager bot username" : "Bot username",
     "@exampleBot",
+    { signal },
   );
   if (!usernameInput?.trim()) return undefined;
   const username = normalizeBotUsername(usernameInput);
-  const token = await promptSecret(
-    ui,
-    kind === "manager" ? `Token for @${username}` : `Token for @${username}`,
-  );
+  const token = await promptSecret(ui, `Token for @${username}`, signal);
+  signal?.throwIfAborted();
   return token ? { username, token } : undefined;
 }
 
 export async function configureManager(
   ctx: ExtensionContext,
+  signal: AbortSignal = AbortSignal.timeout(180_000),
 ): Promise<GlobalSettings | undefined> {
-  const credentials = await promptBotCredentials(ctx.ui, "manager");
+  if (ctx.mode !== "tui")
+    throw new Error("Masked token entry requires local Pi UI.");
+  const snapshot = await loadGlobalSettings();
+  const credentials = await promptBotCredentials(ctx.ui, "manager", signal);
   if (!credentials) return undefined;
   const identity = await validateBotToken(
     credentials.token,
     credentials.username,
     true,
-    AbortSignal.timeout(20_000),
+    AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
   );
   const confirmed = await ctx.ui.confirm(
     `Use @${identity.username} as the manager bot?`,
     "Managed-bot setup uses local getUpdates polling and will remove any webhook currently configured for this manager bot.",
+    { signal },
   );
   if (!confirmed) return undefined;
-  const settings: GlobalSettings = {
-    version: 1,
-    provisioningMode: "manager",
-    manager: {
-      id: identity.id,
-      username: identity.username,
-      token: credentials.token.trim(),
-    },
-  };
-  await saveGlobalSettings(settings);
-  ctx.ui.notify(
-    `Manager bot @${identity.username} saved in ${getGlobalSettingsPath()}`,
-    "info",
-  );
-  return settings;
+
+  return withManagerLock(async () => {
+    signal.throwIfAborted();
+    const previous = await loadGlobalSettings();
+    if (JSON.stringify(previous) !== JSON.stringify(snapshot))
+      throw new Error(
+        "Manager settings changed during setup. Please review them again.",
+      );
+    const previousManager =
+      previous?.provisioningMode === "manager" &&
+      previous.manager.id === identity.id
+        ? previous.manager
+        : undefined;
+    const settings: GlobalSettings = {
+      version: 1,
+      provisioningMode: "manager",
+      manager: {
+        id: identity.id,
+        username: identity.username,
+        token: credentials.token.trim(),
+        ...(previousManager?.updateOffset === undefined
+          ? {}
+          : { updateOffset: previousManager.updateOffset }),
+        ...(previousManager?.pending
+          ? { pending: previousManager.pending }
+          : {}),
+        ...(previousManager?.knownBots
+          ? { knownBots: previousManager.knownBots }
+          : {}),
+      },
+    };
+    await saveGlobalSettings(settings);
+    ctx.ui.notify(
+      `Manager bot @${identity.username} saved in ${getGlobalSettingsPath()}`,
+      "info",
+    );
+    return settings;
+  });
 }
 
-export async function configureManualProjectBot(
+export async function pairProjectBotOwner(
   ctx: ExtensionContext,
-): Promise<ProjectBotSettings | undefined> {
-  const credentials = await promptBotCredentials(ctx.ui, "project");
+  token: string,
+  username: string,
+  signal?: AbortSignal,
+): Promise<ConfiguredProjectBot> {
+  const controller = new AbortController();
+  const combined = AbortSignal.any([
+    controller.signal,
+    ...(signal ? [signal] : []),
+    AbortSignal.timeout(180_000),
+  ]);
+  combined.throwIfAborted();
+  let failure: unknown;
+  const paired = await ctx.ui.custom<ConfiguredProjectBot | undefined>(
+    (tui, _theme, _keys, done) => {
+      let label = `Preparing private owner pairing for @${username}…`;
+      // Close only after polling settles, so callers cannot release the lease
+      // while the cancelled getUpdates request is still in flight.
+      void pairManualBot(
+        token,
+        username,
+        (code) => {
+          label = `Open @${username}, press Start, and send: ${code}`;
+          tui.requestRender();
+        },
+        combined,
+      ).then(done, (error) => {
+        failure = error;
+        done(undefined);
+      });
+      return {
+        render: (width: number) => [
+          truncate(label, width),
+          truncate("Esc: cancel pairing • expires after three minutes", width),
+        ],
+        handleInput: (data: string) => {
+          if (data === "\x1b" || data === "\x03")
+            controller.abort(new Error("Telegram pairing cancelled."));
+        },
+        invalidate() {},
+      };
+    },
+  );
+  if (!paired) throw failure ?? new Error("Telegram pairing cancelled.");
+  combined.throwIfAborted();
+  return paired;
+}
+
+export async function promptProjectBot(
+  ctx: ExtensionContext,
+  signal: AbortSignal,
+): Promise<{ id: string; username: string; token: string } | undefined> {
+  if (ctx.mode !== "tui")
+    throw new Error("Masked token entry requires local Pi UI.");
+  const credentials = await promptBotCredentials(ctx.ui, "project", signal);
   if (!credentials) return undefined;
   const identity = await validateBotToken(
     credentials.token,
     credentials.username,
     false,
-    AbortSignal.timeout(20_000),
+    AbortSignal.any([signal, AbortSignal.timeout(20_000)]),
   );
-  const confirmed = await ctx.ui.confirm(
-    `Connect @${identity.username} to this project?`,
-    "Pi Telegram requires exclusive local getUpdates polling and will remove any webhook currently configured for this bot.",
-  );
-  if (!confirmed) return undefined;
-  let pairingCode: string | undefined;
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(new Error("Telegram owner pairing timed out after three minutes.")),
-    180_000,
-  );
-  try {
-    const settings = await pairManualBot(
-      credentials.token,
-      credentials.username,
-      (code) => {
-        pairingCode = code;
-        ctx.ui.notify(
-          `Open @${credentials.username} in Telegram, press Start, and send this exact pairing code within three minutes: ${code}`,
-          "info",
-        );
-      },
-      controller.signal,
-    );
-    await saveProjectSettings(ctx.cwd, settings);
-    ctx.ui.notify(
-      `@${settings.username} is configured for this project in ${getProjectSettingsPath(ctx.cwd)}.`,
-      "info",
-    );
-    return settings;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      pairingCode ? `Pairing with @${credentials.username} failed: ${message}` : message,
-      { cause: error },
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-export async function ensureInitialConfiguration(
-  ctx: ExtensionContext,
-): Promise<{
-  global?: GlobalSettings;
-  project?: ProjectBotSettings;
-}> {
-  let global = await loadGlobalSettings();
-  if (!global) {
-    const selected = await ctx.ui.select(
-      "Do you have a Telegram manager bot that can create managed bots?",
-      [MANAGER_OPTION, MANUAL_OPTION],
-    );
-    if (selected === MANAGER_OPTION) {
-      global = await configureManager(ctx);
-    } else if (selected === MANUAL_OPTION) {
-      global = { version: 1, provisioningMode: "manual" };
-      await saveGlobalSettings(global);
-      ctx.ui.notify(
-        `Manual provisioning mode saved in ${getGlobalSettingsPath()}.`,
-        "info",
-      );
-    }
-  }
-
-  let project = await loadProjectSettings(ctx.cwd);
-  if (global?.provisioningMode === "manual" && !project) {
-    project = await configureManualProjectBot(ctx);
-  }
-  return { global, project };
+  signal.throwIfAborted();
+  return {
+    id: identity.id,
+    username: identity.username,
+    token: credentials.token,
+  };
 }

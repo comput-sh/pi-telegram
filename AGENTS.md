@@ -9,10 +9,14 @@ Make Telegram a first-class frontend for live Pi coding-agent sessions. Prefer n
 - Keep transport, authorization, lifecycle, polling, and credentials in package code.
 - Pi Telegram talks directly to the Telegram Bot API; do not introduce a hosted provisioner or cloud registry.
 - Store manager mode and manager credentials globally in `~/.pi/agent/pi-telegram/settings.json`.
-- Store each project bot in `.pi/pi-telegram.local.json`, outside Pi session/transcript data.
+- Store every project bot in the version-2 `bots` list in `.pi/pi-telegram.local.json`, outside Pi session/transcript data.
+- Assign bots only through persistent IDs from `ctx.sessionManager.getSessionId()`; one session owns at most one bot and one bot belongs to at most one session.
+- Keep `session_start` passive: connect only an exact stored session assignment and never prompt or provision there.
 - Never derive, suggest, hash, or truncate bot usernames from project names. Managed usernames are explicit user choices; existing identities come from `getMe`.
 - Tokens must be collected through hidden local UI, never through model tool parameters or chat.
-- One Pi session owns one project-bot `getUpdates` connection.
+- Require explicit confirmation before transferring another session's bot assignment.
+- Release clears only `sessionId`; it does not delete bot credentials. Removing a bot requires separate destructive confirmation and deletes only local project credentials.
+- Protect each live bot with a global runtime lease and disconnect when persisted ownership moves.
 - Serialize manager polling with the global lock and one persisted pending username.
 - Save a managed child connection before advancing the manager update offset.
 - Reject tracked or symbolic project credential paths and exclude the path from Git before writing.
