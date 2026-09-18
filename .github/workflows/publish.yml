@@ -22,4 +22,12 @@ jobs:
       - run: npm ci
       - run: npm run validate
       - name: Publish through npm Trusted Publishing
-        run: env -u NODE_AUTH_TOKEN -u NPM_TOKEN NPM_CONFIG_USERCONFIG=/dev/null npm publish --access public --provenance
+        shell: bash
+        run: |
+          npm --version
+          set +e
+          env -u NODE_AUTH_TOKEN -u NPM_TOKEN NPM_CONFIG_USERCONFIG=/dev/null npm publish --access public --provenance --loglevel=verbose > "$RUNNER_TEMP/npm-publish.log" 2>&1
+          result=$?
+          # Only print authentication diagnostics and publication status, not raw HTTP logs.
+          grep -E '^npm (verbose oidc|error (code|need auth)|notice (Publishing|publish))|^\+ ' "$RUNNER_TEMP/npm-publish.log" | sed -E 's/npm_[A-Za-z0-9]+/[REDACTED]/g; s/eyJ[A-Za-z0-9_.-]+/[REDACTED]/g' || true
+          exit "$result"
