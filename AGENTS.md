@@ -11,11 +11,11 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## Local unreleased reliability/streaming work
+## Reliability/streaming fixes (released in 0.2.5)
 
-- Checkpoint `87ee97b` commits reconnect recovery before streaming changes; it is not published. Startup retries assigned-session failures with bounded attempts/backoff and treats connection-notice failure as a failed connection. Retries stop on shutdown and recheck assignment.
-- Subsequent local streaming changes remove the phase-metadata gate: authenticated public text streams on text deltas, retaining multiline formatting and replacing the current preview. Thinking/tool data stays private. First public text writes immediately, later writes remain coalesced; generic status remains during tools/pauses.
-- Validation: 98 tests passed. Live reload/update and streaming verification remain pending. The active installation is from npm; local changes do not activate with `/reload` alone until installed/published.
+- Checkpoint `87ee97b` records reconnect recovery before streaming changes; both are included in 0.2.5. Startup retries assigned-session failures with bounded attempts/backoff and treats connection-notice failure as a failed connection. Retries stop on shutdown and recheck assignment.
+- Subsequent streaming changes remove the phase-metadata gate: authenticated public text streams on text deltas, retaining multiline formatting and replacing the current preview. Thinking/tool data stays private. First public text writes immediately, later writes remain coalesced; generic status remains during tools/pauses.
+- Validation: 98 tests passed. Live reload/update and streaming verification remain pending. The npm installation on this host was updated and verified as 0.2.5. Reload is still required to activate it; live reconnect/streaming testing is not yet verified.
 
 ## Question buttons (released in 0.2.4)
 
@@ -56,14 +56,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-Last verified against release commit `dec412b`:
+Last verified against release commit `0bfe2ae`:
 
-- Local and GitHub source version: **0.2.4**.
-- npm `latest`: **0.2.4**, published and public-registry verified. Published tarball SHA-1: `2f653526a222f2697ad866d3b4234c440df2060a`.
+- Local and GitHub source version: **0.2.5**.
+- npm `latest`: **0.2.5**, published and public-registry verified. Published tarball SHA-1: `17754cdbdc93c7d413ac8889dbd3a3170a32b626`.
 - Startup now sends `Connected · ProjectName · IP · vVersion`; `/status` retains branch, hostname, and controls.
 - `728a9f8` committed the multi-bot/session-assignment implementation and lifecycle hardening; `a227cbc` switched the publishing workflow to token-free authentication. Both are pushed to `origin/main`.
-- Last validation: TypeScript typecheck and **94 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 22 intended files, including `CHANGELOG.md`. These are checkpoint results, not guarantees about future edits.
-- **Trusted Publishing is verified working.** Run `35462425907` published 0.2.4 from `dec412b` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
+- Last validation: TypeScript typecheck and **98 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 23 intended files, including `CHANGELOG.md`. These are checkpoint results, not guarantees about future edits.
+- **Trusted Publishing is verified working.** Run `35464035626` published 0.2.5 from `0bfe2ae` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
 - Earlier OIDC authorization failures were resolved after the user saved the package-specific GitHub Trusted Publisher mapping. Enabling “Allow npm publish” alone was insufficient. The workflow retains filtered OIDC diagnostics.
 - Local `npm whoami` also returned `401`. Do not assume previously configured local npm credentials are valid.
 - Real Telegram two-session smoke testing of the new lifecycle remains pending. Automated lifecycle tests use mocked Pi contexts and Bot API responses.
@@ -73,8 +73,8 @@ Last verified against release commit `dec412b`:
 1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
 3. Keep the verified Trusted Publisher mapping: GitHub owner `mbundgaard`, repository `PiTelegram`, workflow filename `publish.yml`, no GitHub environment name.
-4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, 0.2.3, or 0.2.4. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
-5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.4 tarball additionally includes authenticated question buttons and updated release notes; this post-publication checkpoint update is documentation-only.
+4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, 0.2.3, 0.2.4, or 0.2.5. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
+5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.5 tarball additionally includes reconnect recovery and phase-independent public-text streaming; this post-publication checkpoint update is documentation-only.
 
 Do not initialize Git, commit, push, tag, or publish without explicit user authorization for that operation. Documentation review alone is not authorization to publish.
 
