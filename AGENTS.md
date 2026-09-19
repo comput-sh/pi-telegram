@@ -13,13 +13,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-Last verified against commit `2be7165`:
+Last verified against release commit `5e84564`:
 
-- Local and GitHub source version: **0.2.0**.
-- npm `latest`: **0.2.0**, published and registry-verified on 2026-09-18. Published tarball SHA-1: `7980a52dcec6a3d285cd8d45dc1ed4dadffda49a`.
+- Local and GitHub source version: **0.2.1**.
+- npm `latest`: **0.2.1**, published and public-registry verified. Published tarball SHA-1: `798c6e738c1ea3516679f14e883159386cec53cb`.
+- Startup now sends only `Connected · ProjectName · IP`; `/status` retains branch, hostname, and controls.
 - `728a9f8` committed the multi-bot/session-assignment implementation and lifecycle hardening; `a227cbc` switched the publishing workflow to token-free authentication. Both are pushed to `origin/main`.
 - Last validation: TypeScript typecheck and **70 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 18 intended files. These are checkpoint results, not guarantees about future edits.
-- **Trusted Publishing is verified working.** Run `35380361089` published 0.2.0 from `2be7165` through GitHub OIDC with signed SLSA provenance. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
+- **Trusted Publishing is verified working.** Run `35433746611` published 0.2.1 from `5e84564` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
 - Earlier OIDC authorization failures were resolved after the user saved the package-specific GitHub Trusted Publisher mapping. Enabling “Allow npm publish” alone was insufficient. The workflow retains filtered OIDC diagnostics.
 - Local `npm whoami` also returned `401`. Do not assume previously configured local npm credentials are valid.
 - Real Telegram two-session smoke testing of the new lifecycle remains pending. Automated lifecycle tests use mocked Pi contexts and Bot API responses.
@@ -29,8 +30,8 @@ Last verified against commit `2be7165`:
 1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
 3. Keep the verified Trusted Publisher mapping: GitHub owner `mbundgaard`, repository `PiTelegram`, workflow filename `publish.yml`, no GitHub environment name.
-4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
-5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.0 tarball predates the subsequent handoff-documentation updates.
+4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0 or 0.2.1. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
+5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.1 tarball includes the startup change and updated README; this post-publication checkpoint update is documentation-only.
 
 Do not initialize Git, commit, push, tag, or publish without explicit user authorization for that operation. Documentation review alone is not authorization to publish.
 
