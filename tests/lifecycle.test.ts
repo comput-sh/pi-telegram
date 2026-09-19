@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -11,6 +11,7 @@ import extension from "../src/index.ts";
 import {
   assignProjectBot,
   loadProjectSettings,
+  loadGlobalSettings,
   saveProjectSettings,
   saveGlobalSettings,
   type ProjectBotSettings,
@@ -35,6 +36,7 @@ const bot = (
 function harness(cwd: string, sessionId = "main") {
   const events = new Map<string, Handler[]>();
   const commands = new Map<string, Handler>();
+  const tools = new Map<string, any>();
   const sent: string[] = [];
   const notices: string[] = [];
   let prompts = 0;
@@ -79,7 +81,7 @@ function harness(cwd: string, sessionId = "main") {
       events.set(name, [...(events.get(name) ?? []), handler]),
     registerCommand: (name: string, options: { handler: Handler }) =>
       commands.set(name, options.handler),
-    registerTool: () => {},
+    registerTool: (tool: any) => tools.set(tool.name, tool),
     sendUserMessage: (content: string) => {
       sent.push(content);
     },
@@ -96,6 +98,7 @@ function harness(cwd: string, sessionId = "main") {
     inputs,
     emit,
     command: (name: string) => commands.get(name)!("", ctx),
+    tool: (name: string) => tools.get(name).execute("test", {}, undefined, undefined, ctx),
     prompts: () => prompts,
     setIdle: (value: boolean) => {
       idle = value;
@@ -109,6 +112,7 @@ async function fixture(
     cwd: string,
     network: {
       calls: string[];
+      messages: string[];
       failToken?: string;
       failMessages?: boolean;
       inbound: unknown[];
@@ -122,19 +126,28 @@ async function fixture(
   process.env.PI_TELEGRAM_SETTINGS = join(cwd, "global", "settings.json");
   const network: {
     calls: string[];
+    messages: string[];
     failToken?: string;
     failMessages?: boolean;
     inbound: unknown[];
     managedUpdates?: unknown[];
-  } = { calls: [], inbound: [] };
+  } = { calls: [], messages: [], inbound: [] };
   globalThis.fetch = (async (url, init) => {
+    if (String(url).startsWith("https://registry.npmjs.org/"))
+      return new Response(JSON.stringify({ name: "@comput/pi-telegram", version: "0.0.0" }));
+    if (String(url).startsWith("https://api.telegram.org/file/")) {
+      network.calls.push("downloadFile");
+      return new Response("hello");
+    }
     const method = String(url).split("/").at(-1)!;
     network.calls.push(method);
     const body = JSON.parse(String(init?.body ?? "{}"));
+    if (method === "sendMessage") network.messages.push(body.text);
     if (network.failToken && String(url).includes(network.failToken))
       throw new Error("network unavailable");
     const ok = (result: unknown) =>
       new Response(JSON.stringify({ ok: true, result }));
+    if (method === "getFile") return ok({ file_path: "documents/file.txt", file_size: 5 });
     if (method === "getMe")
       return ok({ id: 111, is_bot: true, username: "Example111Bot" });
     if (method === "getWebhookInfo") return ok({ url: "" });
@@ -217,6 +230,103 @@ test("successful manual pairing transfers its lease to the connected runtime", a
     } finally {
       await pi.emit("session_shutdown");
     }
+  }));
+
+test("completion tool is passive without pending setup and rejects other sessions", async () =>
+  fixture(async (cwd, network) => {
+    const pi = harness(cwd);
+    assert.equal((await pi.tool("telegram_complete_setup")).details.status, "none");
+    assert.equal(pi.prompts(), 0);
+    assert.equal(network.calls.length, 0);
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: {
+      id: "999", username: "ManagerBot", token: "test-manager", pending: {
+        username: "Example111Bot", displayName: "Example", requestedAt: new Date().toISOString(),
+        projectPath: await realpath(cwd), sessionId: "other",
+      },
+    } });
+    assert.equal((await pi.tool("telegram_complete_setup")).details.status, "other_session");
+    assert.equal(network.calls.length, 0);
+    assert.equal(pi.prompts(), 0);
+    assert.equal((await loadGlobalSettings())?.provisioningMode, "manager");
+  }));
+
+test("completion refuses legacy and other-project requests and cancelled setup cannot be resurrected", async () =>
+  fixture(async (cwd, network) => {
+    const pending = { username: "Example111Bot", displayName: "Example", requestedAt: new Date().toISOString() };
+    const manager = { id: "999", username: "ManagerBot", token: "test-manager" };
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: { ...manager, pending } });
+    const pi = harness(cwd);
+    assert.equal((await pi.tool("telegram_complete_setup")).details.status, "legacy_pending");
+    assert.equal(pi.prompts(), 0);
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: {
+      ...manager, pending: { ...pending, sessionId: "main", projectPath: join(cwd, "other") },
+    } });
+    assert.equal((await pi.tool("telegram_complete_setup")).details.status, "other_session");
+    assert.equal(network.calls.length, 0);
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: { ...manager, pending } });
+    pi.choices.push("Add a bot…", "Complete @Example111Bot");
+    pi.ctx.ui.confirm = async () => {
+      await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager });
+      return true;
+    };
+    await assert.rejects(pi.command("telegram-start"), /Pending creation changed/);
+    const current = await loadGlobalSettings();
+    assert.ok(current?.provisioningMode === "manager");
+    assert.equal(current.manager.pending, undefined);
+    assert.equal(network.calls.length, 0);
+  }));
+
+test("done checks pending creation then connects without menu navigation", async () =>
+  fixture(async (cwd, network) => {
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: {
+      id: "999", username: "ManagerBot", token: "test-manager",
+    } });
+    const pi = harness(cwd);
+    pi.choices.push("Add a bot…", "Create managed bot");
+    pi.inputs.push("Example111Bot", "Example");
+    try {
+      await pi.command("telegram-start");
+      const settings = await loadGlobalSettings();
+      assert.ok(settings?.provisioningMode === "manager");
+      assert.equal(settings.manager.pending?.sessionId, "main");
+      assert.equal(settings.manager.pending?.projectPath, await realpath(cwd));
+      const prompts = pi.prompts();
+      const waiting = await pi.tool("telegram_complete_setup");
+      assert.equal(waiting.details.status, "pending");
+      assert.match(waiting.details.message, /Still waiting/);
+      assert.equal(pi.prompts(), prompts);
+      network.managedUpdates = [{ update_id: 7, managed_bot: {
+        user: { id: 42, is_bot: false },
+        bot: { id: 111, is_bot: true, username: "Example111Bot" },
+      } }];
+      const completed = await pi.tool("telegram_complete_setup");
+      assert.equal(completed.details.status, "connected");
+      assert.equal(pi.prompts(), prompts);
+      assert.equal((await loadProjectSettings(cwd))?.bots[0]?.sessionId, "main");
+      assert.equal((await pi.tool("telegram_complete_setup")).details.status, "none");
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("start offers pending completion first while preserving transfer confirmation", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot("111", "other")] });
+    await saveGlobalSettings({ version: 1, provisioningMode: "manager", manager: {
+      id: "999", username: "ManagerBot", token: "test-manager", pending: {
+        username: "Example111Bot", displayName: "Example", requestedAt: new Date().toISOString(),
+        projectPath: await realpath(cwd), sessionId: "main",
+      },
+    } });
+    network.managedUpdates = [{ update_id: 7, managed_bot: {
+      user: { id: 42, is_bot: false }, bot: { id: 111, is_bot: true, username: "Example111Bot" },
+    } }];
+    const pi = harness(cwd);
+    pi.choices.push("FIRST");
+    let confirmed = false;
+    pi.ctx.ui.confirm = async () => { confirmed = true; return false; };
+    await pi.command("telegram-start");
+    assert.ok(confirmed);
+    assert.equal(pi.prompts(), 1);
+    assert.equal((await loadProjectSettings(cwd))?.bots[0]?.sessionId, "other");
   }));
 
 test("managed completion does not silently transfer an existing assigned bot", async () =>
@@ -427,6 +537,76 @@ test("shutdown cancels an outstanding setup before it can assign or connect", as
     assert.equal(network.calls.length, 0);
   }));
 
+test("owner documents become request-bound saved attachments; captions are not commands", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    const pi = harness(cwd);
+    try {
+      network.inbound.push({ update_id: 1, message: { message_id: 1,
+        caption: "/stop", document: { file_id: "doc", file_name: "report.txt", file_size: 5 },
+        chat: { id: 42, type: "private" }, from: { id: 99, is_bot: false },
+      } }, { update_id: 2, message: { message_id: 2,
+        caption: "/stop", document: { file_id: "doc", file_name: "report.txt", file_size: 5 },
+        chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+      } });
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !pi.sent.length; i++) await new Promise(r => setTimeout(r, 20));
+      assert.equal(pi.sent.length, 1);
+      assert.equal(network.calls.filter(method => method === "getFile").length, 1);
+      assert.match(pi.sent[0]!, /User caption:\n\/stop/);
+      assert.match(pi.sent[0]!, /\.pi\/telegram-inbox\//);
+      assert.match(pi.sent[0]!, /untrusted data/);
+      assert.ok(network.messages.includes("Downloading attachment…"));
+      assert.equal(pi.aborts(), 0);
+      const text = pi.sent[0]!;
+      await pi.emit("input", { text, source: "extension" });
+      await pi.emit("message_start", { message: { role: "user", content: text } });
+      assert.ok(network.calls.includes("sendRichMessageDraft"));
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("captionless photos reach the agent with an ask-before-inspecting instruction", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1,
+      photo: [{ file_id: "small", width: 10, height: 10, file_size: 5 }, { file_id: "large", width: 100, height: 100, file_size: 5 }],
+      chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    const original = globalThis.fetch;
+    let requested = "";
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).endsWith("/getFile")) requested = JSON.parse(String(init?.body)).file_id;
+      return original(url, init);
+    }) as typeof fetch;
+    const pi = harness(cwd);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !pi.sent.length; i++) await new Promise(r => setTimeout(r, 20));
+      assert.equal(requested, "large");
+      assert.equal(pi.sent.length, 1);
+      assert.match(pi.sent[0]!, /Received Telegram photo/);
+      assert.match(pi.sent[0]!, /ask what they want done; do not inspect/);
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("stop can cancel an in-flight attachment without admitting a request", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1,
+      document: { file_id: "doc", file_name: "log.txt" },
+      chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } }, { update_id: 2, message: { message_id: 2, text: "/stop",
+      chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    const pi = harness(cwd);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !network.messages.some(text => text.includes("cancelled")); i++) await new Promise(r => setTimeout(r, 20));
+      assert.ok(network.messages.some(text => text.includes("cancellation requested")));
+      assert.equal(pi.sent.length, 0);
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
 test("a real inbound request routes through its receipt to the receiving bot", async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
@@ -463,6 +643,26 @@ test("a real inbound request routes through its receipt to the receiving bot", a
     } finally {
       await pi.emit("session_shutdown");
     }
+  }));
+
+test("busy follow-ups are acknowledged without starting a draft prematurely", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: {
+      message_id: 1, text: "next task", chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    const pi = harness(cwd);
+    pi.setIdle(false);
+    try {
+      await pi.emit("session_start");
+      assert.equal(pi.sent.length, 1);
+      assert.ok(network.messages.some(text => text.startsWith("Queued")));
+      assert.ok(!network.calls.includes("sendRichMessageDraft"));
+      const text = pi.sent[0]!;
+      await pi.emit("input", { text, source: "extension" });
+      await pi.emit("message_start", { message: { role: "user", content: text } });
+      assert.ok(network.calls.includes("sendRichMessageDraft"));
+    } finally { await pi.emit("session_shutdown"); }
   }));
 
 test("Telegram steering cannot turn a running console task into a Telegram request", async () =>

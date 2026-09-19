@@ -122,6 +122,15 @@ test("public commentary replaces thinking with one evolving plain draft", async 
     await new Promise((resolve) => setTimeout(resolve, 1_600));
     await connection.updateRichDraft("Latest public comment");
     await connection.setDraftActivity("bash");
+    await new Promise((resolve) => setTimeout(resolve, 1_600));
+    const working = requests.at(-1)!;
+    assert.equal(working.method, "sendMessageDraft");
+    assert.match(String(working.body.text), /^Latest public comment\n\nRunning a command\.+$/);
+    await new Promise((resolve) => setTimeout(resolve, 5_100));
+    const refreshed = requests.at(-1)!;
+    assert.equal(refreshed.method, "sendMessageDraft");
+    assert.notEqual(refreshed.body.text, working.body.text);
+    assert.doesNotMatch(String(refreshed.body.text), /\u2060/);
     await connection.streamRichDraft("Streaming public text");
     await new Promise((resolve) => setTimeout(resolve, 1_600));
     await connection.sendRichMessage("# Result\n\n| A | B |\n|---|---|\n| 1 | 2 |");

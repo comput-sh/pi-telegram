@@ -6,9 +6,11 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.2.2** adds `telegram_send_photo` for inline PNG/JPEG delivery with image validation and shared upload safeguards. Startup notifications remain `Connected · ProjectName · IP`, retaining full details in `/status`. It includes the multi-bot and hardened lifecycle features introduced in 0.2.0. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.2.3** adds incoming documents/photos, working-status fixes, direct completion of pending managed-bot setup, versioned startup notifications, and owner-approved npm update buttons. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
-The release passed TypeScript validation and 73 automated tests. Live two-session Telegram smoke testing and inline-photo delivery smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
+See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
+
+Validation covers TypeScript and automated tests. Live two-session lifecycle, inline-photo, setup-completion and update-button/install smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
 
 ## Install
 
@@ -23,6 +25,16 @@ pi install git:github.com/mbundgaard/PiTelegram
 ```
 
 Start a new Pi session or run `/reload` after installation. Installation is global but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session. Interactive setup requires Pi's local terminal UI; masked token setup is not available through RPC or non-interactive modes.
+
+## Update notifications
+
+Startup notifications include the **loaded extension version**: `Connected · ProjectName · IP · v0.2.3`.
+
+On each session startup/reload, Pi Telegram checks npm's `latest` stable release in the background (eight-second timeout). A failed check does not prevent connection, and no “up to date” message is sent. `PI_OFFLINE` disables the check. Unassigned sessions remain silent and do not connect to Telegram.
+
+Connected owners with a newer version available receive **Update to vX.Y.Z** and **Not now** buttons. Approval is bound to that live connection and offered version; unauthorized, duplicate, or stale clicks cannot install anything. Installation waits until Pi is idle, then reloads only the approving session. Other sessions using the same npm installation pick up the update when they reload; they are not restarted automatically. “Not now” dismisses the offer until a future startup check.
+
+Automatic installation supports standard Pi global/project npm locations using the default npm CLI. Local source/Git checkouts, symlinked packages, pinned Pi package sources, custom package-manager configurations, and unrecognized installations receive a notification only and must be updated locally. Installation uses the exact approved version from the public npm registry and a host-local heartbeat lock to serialize Pi Telegram update attempts. npm errors/output are not forwarded to Telegram. A failed or interrupted installation is not automatically retried or rolled back; inspect/repair it locally before retrying. Reload and live update-button/install smoke testing remain pending.
 
 ## Start Telegram
 
@@ -58,7 +70,9 @@ The manager configuration is stored globally:
 
 `PI_TELEGRAM_SETTINGS` can override this global settings path.
 
-Choose the exact username for each new managed bot. Pi Telegram never derives, hashes, truncates, prefixes, or otherwise chooses usernames from project names. Telegram requires the owner to approve the generated managed-bot creation link. Start Telegram again after approval to complete setup.
+Choose the exact username for each new managed bot. Pi Telegram never derives, hashes, truncates, prefixes, or otherwise chooses usernames from project names. Telegram requires the owner to approve the generated managed-bot creation link. After creating the bot and pressing **Start** in Telegram, tell the initiating agent **“done”**. The `telegram_complete_setup` tool checks the real Telegram creation update and completes setup without reopening the Add menu. Alternatively, use `/telegram-complete-setup` or the first **Complete @BotName** option in `/telegram-start`.
+
+Pending creation is bound to the initiating project and persistent Pi session. If the update has not arrived, completion reports that it is still waiting; it never creates a replacement request. “Done” is interpreted conversationally in setup context, not intercepted globally. Local interactive UI is still required for any webhook or transfer confirmations. Older pending requests without session ownership can be recovered through **Add a bot… → Complete**, with explicit local confirmation.
 
 The global manager settings maintain a best-effort catalog of managed bot IDs, usernames, and owner IDs observed in Telegram updates. Child tokens are never stored in that catalog. Telegram has no API for listing every managed bot or resolving an arbitrary private bot username; token retrieval requires a numeric bot ID. If a bot is missing from the catalog but you know its ID and exact username, the recovery flow retrieves and validates its token, restricts access, and performs private owner pairing.
 
@@ -79,6 +93,7 @@ A regular BotFather bot can be restored after reinstall by adding its username a
 | `/telegram-setup` | Choose manager or manual provisioning mode |
 | `/telegram-setup-manager` | Configure or replace the global manager bot |
 | `/telegram-setup-bot` | Add a manual bot and assign it to this session |
+| `/telegram-complete-setup` | Complete this session's pending managed-bot request without menus |
 | `/telegram-cancel-managed-bot` | Cancel a pending managed-bot request |
 
 ## Project configuration
@@ -152,9 +167,19 @@ During a Telegram-originated request, ask Pi to send a generated or existing pro
 
 `telegram_send_photo` is available for explicitly requested inline PNG/JPEG previews. Photos must be at most 10 MB, have width + height at most 10,000 pixels, and an aspect ratio at most 20:1. Actual image contents are decoded and validated before upload. Captions are optional plain text, up to 1,024 characters. Telegram may resize/compress photos; request document delivery for original quality. No automatic conversion, document fallback, or EXIF/GPS metadata removal is performed or promised.
 
-Both tools use the same project-file safeguards and request-bound destination. Cancellation and disconnect abort pending uploads; an interrupted network request may already have reached Telegram, so check the chat before retrying. Success is reported only after Telegram accepts the upload. Incoming files, albums, and automatic resizing are not supported.
+Both tools use the same project-file safeguards and request-bound destination. Cancellation and disconnect abort pending uploads; an interrupted network request may already have reached Telegram, so check the chat before retrying. Success is reported only after Telegram accepts the upload. Albums and automatic resizing are not supported.
 
 Safeguards include canonical paths restricted to the active project, blocked credential and repository-internal files (including configured global settings and temporary credential files), revalidation immediately before reading the attachment, Telegram's 50 MB cloud Bot API upload limit, and optional plain-text captions up to 1,024 characters.
+
+### Receiving files from Telegram
+
+Send a **document or photo** in the paired owner's private bot chat. A caption becomes a normal follow-up instruction with the saved file path. Caption text is not interpreted as a Telegram command or steering prefix. Without a caption, the agent is asked to acknowledge receipt and ask what you want done before inspecting it. Photos use Telegram's largest available size; send images as documents to preserve original bytes.
+
+Downloads show a **Downloading attachment…** acknowledgement, followed by **Received** and a queue notice when Pi is busy. Files are saved with unique sanitized names in `.pi/telegram-inbox/`, protected by an inbox `.gitignore`. Each file is limited to **20 MB** (the hosted Bot API download limit); the inbox is limited to **100 files / 100 MB**. Limits are enforced while streaming, not just from metadata. Files remain until you remove them locally; there is no automatic deletion. Interrupted partial downloads are removed.
+
+Only the stored owner can upload. The receiving connection binds the resulting agent request; a disconnect/transfer cancels pending downloads and cannot route them into a replacement session. Files are untrusted data, never automatically executed or extracted. The downloader rejects symbolic inbox paths and Git-tracked inbox files. File contents are not scanned for secrets or malware.
+
+One attachment can download per connection at a time. Send `/stop` to cancel that download. Additional attachments and ordinary instructions received during a download get an explicit resend notice rather than being silently dropped; albums, voice, audio and video messages are not supported yet. `/status` remains available during downloads. Reload and live document/photo reception tests remain pending.
 
 ## Development
 

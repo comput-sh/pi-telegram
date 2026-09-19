@@ -55,6 +55,8 @@ Project configuration updates use a global per-project mutation lock and atomic 
 
 `/telegram-start` and the model-callable `telegram_start` open local selection UI. No token or owner data enters model history or tool arguments.
 
+Pending managed creation records the canonical project path and persistent initiating session ID. `/telegram-complete-setup` and `telegram_complete_setup` check that existing request directly, without creation or selection menus. The agent may invoke completion when the user says “done” in setup context; no global text interceptor is used. `/telegram-start` puts matching pending completion first. Cross-project/session completion is rejected, and legacy unbound requests require explicit local recovery confirmation through Add → Complete. The pending snapshot is compared under the manager lock before mutations, so concurrent cancellation or replacement cannot be overwritten. Pairing/owner validation, webhook confirmation, and assignment transfer safeguards remain unchanged.
+
 Possible actions are generated from current state:
 
 1. Select an unassigned project bot.
@@ -139,6 +141,8 @@ On interactive `session_start`:
 The runtime lease is keyed by Telegram bot ID and records only process/session metadata, never credentials. It prevents duplicate local processes—including duplicate processes for the same resumed Pi session—from polling or pairing one bot. The locking library manages stale recovery and heartbeat renewal, not an unchecked PID read followed by unlink. Status can display the polling PID and session. Live legacy PID locks block upgrading processes until the old process releases or reloads.
 
 A connected process checks its persisted assignment periodically. If another session confirms a transfer and changes `sessionId`, the old process notifies locally, stops polling, and releases its lease. The receiving process waits briefly for this handoff. Telegram's `409 Conflict` response remains a secondary safeguard.
+
+Startup messages include the extension version captured at factory load, not a later disk version. A background npm latest check has an eight-second timeout and respects `PI_OFFLINE`. Unassigned sessions do not notify or connect Telegram. Recognized unpinned Pi npm installations can show owner-only Update/Not now inline buttons. Callback queries never enter the agent input path: private chat, owner, message ID and a one-use connection-local nonce must match. Approval queues a guarded internal command that waits for idle, installs the exact offered version under a host-local heartbeat lock, verifies the installed version, and reloads only that session. Local/Git/symlinked/pinned/custom-manager installations only receive update notices. npm failures are reported without raw logs; no automatic rollback or retry is attempted. Disconnect invalidates offers/approval and aborts pending update work.
 
 Session shutdown aborts pending setup as well as polling, then releases the runtime lease. Pi emits shutdown/start for new, resume, fork, and reload; no redundant before-switch disconnect hook is needed. Persistent assignment remains, so resuming the same Pi session reconnects automatically. Startup refuses existing webhooks rather than removing them without a new explicit confirmation.
 

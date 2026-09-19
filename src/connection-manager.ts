@@ -33,6 +33,8 @@ export class ConnectionManager {
       stopTask(): void;
       disconnected(): void;
       reload(ctx: ExtensionContext): boolean;
+      version?: string;
+      connected?(connection: TelegramSessionConnection, ctx: ExtensionContext): void;
     },
   ) {}
 
@@ -216,6 +218,7 @@ export class ConnectionManager {
       await current
         .sendPlainMessage(
           formatSessionStartupMessage({
+            version: this.callbacks.version,
             projectName: basename(resolve(ctx.cwd)),
             branch: await getGitBranch(ctx.cwd),
             ...getHostIdentity(),
@@ -228,6 +231,7 @@ export class ConnectionManager {
           ),
         );
       check();
+      this.callbacks.connected?.(current, ctx);
       return true;
     } catch (error) {
       if (this.connection === current) await this.disconnect(ctx);

@@ -63,11 +63,13 @@ export function registerResponseRouting(
   const origins = new RequestOrigins<TelegramSessionConnection>();
   let latest: AssistantMessageLike | undefined;
   let delivered = false;
+  const activeTools = new Map<string, string>();
   let outbound = Promise.resolve();
   const destination = () =>
     origins.current === currentConnection() ? origins.current : undefined;
   const reset = () => {
     origins.reset();
+    activeTools.clear();
     latest = undefined;
     delivered = false;
   };
@@ -75,13 +77,20 @@ export function registerResponseRouting(
     origins.admit(event.text, event.source);
   });
   pi.on("message_start", async (event, ctx) => {
+    if (event.message.role === "assistant") {
+      try { await destination()?.beginRichDraft(); }
+      catch { ctx.ui.notify("Telegram activity draft failed.", "warning"); }
+      return;
+    }
     if (event.message.role !== "user") return;
     const previous = destination();
     origins.begin(event.message.content);
     latest = undefined;
     delivered = false;
-    if (previous && previous !== destination())
-      await previous.cancelRichDraft();
+    if (previous !== destination()) {
+      activeTools.clear();
+      if (previous) await previous.cancelRichDraft();
+    }
     const target = destination();
     if (!target) return;
     try {
@@ -94,10 +103,13 @@ export function registerResponseRouting(
     }
   });
   pi.on("tool_execution_start", async (event) => {
+    if (!destination()) return;
+    activeTools.set(event.toolCallId, event.toolName);
     await destination()?.setDraftActivity(event.toolName);
   });
-  pi.on("tool_execution_end", async () => {
-    await destination()?.setDraftActivity();
+  pi.on("tool_execution_end", async (event) => {
+    activeTools.delete(event.toolCallId);
+    await destination()?.setDraftActivity([...activeTools.values()].at(-1));
   });
   pi.on("message_update", async (event, ctx) => {
     const target = destination();
@@ -133,6 +145,12 @@ export function registerResponseRouting(
         else if (stopReason === "stop" || stopReason === "length") {
           await target.sendRichMessage(text);
           delivered = true;
+          // A completed message is not necessarily a settled request (e.g.
+          // automatic compaction or a length-limit retry). Keep activity alive.
+          if (destination() === target) {
+            try { await target.beginRichDraft(); }
+            catch { ctx.ui.notify("Telegram continuation activity draft failed.", "warning"); }
+          }
         }
       } catch {
         ctx.ui.notify("Telegram response delivery failed.", "warning");
@@ -159,6 +177,7 @@ export function registerResponseRouting(
     } finally {
       if (target) await target.cancelRichDraft();
       origins.current = undefined;
+      activeTools.clear();
       latest = undefined;
     }
   });

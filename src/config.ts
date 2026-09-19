@@ -39,6 +39,8 @@ export interface PendingManagedBot {
   username: string;
   displayName: string;
   requestedAt: string;
+  projectPath?: string;
+  sessionId?: string;
 }
 
 export interface ManagerBotSettings extends TelegramBotIdentity {
@@ -212,7 +214,10 @@ function validateManager(value: unknown): ManagerBotSettings {
     (typeof pending.username !== "string" ||
       typeof pending.displayName !== "string" ||
       !pending.displayName.trim() ||
-      pending.displayName.trim().length > 64)
+      pending.displayName.trim().length > 64 ||
+      (pending.projectPath !== undefined && (typeof pending.projectPath !== "string" || !pending.projectPath.trim())) ||
+      (pending.sessionId !== undefined && (typeof pending.sessionId !== "string" || !pending.sessionId.trim())) ||
+      ((pending.projectPath === undefined) !== (pending.sessionId === undefined)))
   ) {
     throw new Error("Pending managed-bot settings are invalid.");
   }
@@ -227,6 +232,7 @@ function validateManager(value: unknown): ManagerBotSettings {
           pending: {
             username: normalizeBotUsername(pending.username!),
             displayName: pending.displayName!.trim(),
+            ...(pending.projectPath === undefined ? {} : { projectPath: pending.projectPath, sessionId: pending.sessionId! }),
             requestedAt: normalizeDate(
               pending.requestedAt,
               "Pending managed-bot requestedAt",

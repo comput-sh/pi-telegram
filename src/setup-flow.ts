@@ -1,5 +1,6 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { basename, resolve } from "node:path";
+import { realpath } from "node:fs/promises";
 import {
   assertProjectSnapshot,
   findSessionBot,
@@ -299,13 +300,29 @@ export class SetupFlows {
       : undefined;
   }
 
+  async completePending(ctx: ExtensionContext, signal: AbortSignal): Promise<SetupOutcome> {
+    return this.managed(ctx, signal, true);
+  }
+
   async managed(
     ctx: ExtensionContext,
     signal: AbortSignal,
+    completeOnly = false,
   ): Promise<SetupOutcome> {
-    const initial = await this.manager(ctx, signal);
+    const snapshot = await loadGlobalSettings();
+    if (completeOnly && (snapshot?.provisioningMode !== "manager" || !snapshot.manager.pending))
+      return { status: "none", message: "No managed-bot request is pending. Use /telegram-start to create one." };
+    const initial = completeOnly && snapshot?.provisioningMode === "manager" ? snapshot.manager : await this.manager(ctx, signal);
     if (!initial) return cancelled();
     let pending = initial.pending;
+    const projectPath = await realpath(ctx.cwd);
+    const sessionId = ctx.sessionManager.getSessionId();
+    if (pending?.sessionId && (pending.sessionId !== sessionId || pending.projectPath !== projectPath))
+      return { status: "other_session", message: "This pending creation belongs to another project or Pi session. Complete it there, or cancel it explicitly before starting again." };
+    if (pending && !pending.sessionId) {
+      if (completeOnly) return { status: "legacy_pending", message: "This older pending request has no originating session. Use /telegram-start → Add a bot → Complete to confirm recovery locally." };
+      if (!(await ctx.ui.confirm("Recover pending creation here?", `Complete @${pending.username} in this project and session?`, { signal }))) return cancelled();
+    }
     if (!pending) {
       const username = await ctx.ui.input(
         "Exact username for the new bot",
@@ -323,6 +340,8 @@ export class SetupFlows {
         username: normalizeBotUsername(username),
         displayName: name.trim() || basename(resolve(ctx.cwd)),
         requestedAt: new Date().toISOString(),
+        projectPath,
+        sessionId,
       };
     }
     signal.throwIfAborted();
@@ -331,15 +350,14 @@ export class SetupFlows {
       const global = await loadGlobalSettings();
       if (
         global?.provisioningMode !== "manager" ||
-        global.manager.id !== initial.id
+        global.manager.id !== initial.id ||
+        global.manager.token !== initial.token
       )
         throw new Error("Manager changed; start setup again.");
       if (
-        global.manager.pending &&
-        global.manager.pending.username.toLowerCase() !==
-          requested.username.toLowerCase()
+        JSON.stringify(global.manager.pending) !== JSON.stringify(initial.pending)
       )
-        throw new Error("Another managed-bot request is pending.");
+        throw new Error("Pending creation changed; start setup again.");
       let manager = { ...global.manager, pending: requested };
       await saveGlobalSettings({ ...global, manager });
       await this.polling(
@@ -385,7 +403,9 @@ export class SetupFlows {
     if (result.bot) return this.activate(result.bot, ctx, signal);
     return {
       status: "pending",
-      message: `Approve creation in Telegram: ${result.url}\nThen run /telegram-start again.`,
+      message: completeOnly
+        ? "Still waiting for Telegram's creation update. Finish creation and press Start in Telegram, then say done again shortly."
+        : `Approve creation in Telegram: ${result.url}\nCreate the bot and press Start, then tell this agent “done” to finish setup (or use /telegram-complete-setup).`,
     };
   }
 
@@ -496,14 +516,19 @@ export class SetupFlows {
     signal: AbortSignal,
   ): Promise<SetupOutcome> {
     const snapshot = (await loadProjectSettings(ctx.cwd)) ?? empty();
+    const pendingGlobal = await loadGlobalSettings();
+    const pending = pendingGlobal?.provisioningMode === "manager" ? pendingGlobal.manager.pending : undefined;
+    const completeLabel = pending?.sessionId === ctx.sessionManager.getSessionId() && pending.projectPath === await realpath(ctx.cwd)
+      ? `Complete @${pending.username}` : undefined;
     const choices = snapshot.bots.map(
       (bot) => `@${bot.username} — ${bot.sessionId ?? "unassigned"}`,
     );
     const choice = await ctx.ui.select(
       "Start Telegram",
-      [...choices, "Add a bot…", "Manage bots…", "Cancel"],
+      [...(completeLabel ? [completeLabel] : []), ...choices, "Add a bot…", "Manage bots…", "Cancel"],
       { signal },
     );
+    if (completeLabel && choice === completeLabel) return this.completePending(ctx, signal);
     const index = choices.indexOf(choice ?? "");
     if (index >= 0)
       return this.activate(
@@ -691,7 +716,7 @@ export class SetupFlows {
     }
     if (global?.provisioningMode === "manager" && global.manager.pending)
       lines.push(
-        `Pending: @${global.manager.pending.username}; approve in Telegram, then Add a bot → Complete.`,
+        `Pending: @${global.manager.pending.username}; approve in Telegram, then say done in the initiating session or use /telegram-complete-setup.`,
       );
     if (!this.connections.connection)
       lines.push(

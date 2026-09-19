@@ -1,5 +1,6 @@
-import { randomInt } from "node:crypto";
+import { randomInt, randomBytes } from "node:crypto";
 import { validateTelegramPhoto } from "./photos.ts";
+import { INCOMING_FILE_LIMIT, type IncomingAttachment } from "./incoming-files.ts";
 
 import {
   TELEGRAM_DOCUMENT_LIMIT,
@@ -71,6 +72,9 @@ interface TelegramApiEnvelope<T> {
 interface TelegramMessage {
   message_id: number;
   text?: string;
+  caption?: string;
+  document?: { file_id: string; file_name?: string; file_size?: number };
+  photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>;
   chat: { id: number; type: string };
   from?: { id: number; is_bot: boolean };
 }
@@ -78,12 +82,20 @@ interface TelegramMessage {
 interface TelegramUpdate {
   update_id: number;
   message?: TelegramMessage;
+  callback_query?: {
+    id: string;
+    from: { id: number; is_bot: boolean };
+    data?: string;
+    message?: TelegramMessage;
+  };
 }
 
 export interface TelegramInboundMessage {
   text: string;
   messageId: number;
   forceSteer?: boolean;
+  attachment?: IncomingAttachment;
+  downloadSignal?: AbortSignal;
 }
 
 export interface TelegramBotCommand {
@@ -177,7 +189,7 @@ function activityForTool(toolName?: string): DraftActivity {
 
 function activityLabel(draft: ActiveDraft): string {
   const activity = AI_ACTIONS[draft.activity];
-  return `${activity.label}${"\u2060".repeat((draft.heartbeat % 3) + 1)}`;
+  return `${activity.label}${".".repeat((draft.heartbeat % 3) + 1)}`;
 }
 
 function renderInitialRichDraft(draft: ActiveDraft): Record<string, unknown> {
@@ -200,16 +212,16 @@ function renderInitialRichDraft(draft: ActiveDraft): Record<string, unknown> {
 }
 
 function renderPlainDraft(draft: ActiveDraft): string {
-  const heartbeat = "\u2060".repeat((draft.heartbeat % 3) + 1);
+  const status = `\n\n${draft.activity === "thinking" ? "Working" : AI_ACTIONS[draft.activity].label}${".".repeat((draft.heartbeat % 3) + 1)}`;
   const content = draft.streamingText || "";
-  if (content.length + heartbeat.length <= PLAIN_DRAFT_LIMIT) {
-    return content + heartbeat;
+  if (content.length + status.length <= PLAIN_DRAFT_LIMIT) {
+    return content + status;
   }
   const marker = "\n\n…preview truncated…";
   return (
-    content.slice(0, PLAIN_DRAFT_LIMIT - marker.length - heartbeat.length) +
+    content.slice(0, PLAIN_DRAFT_LIMIT - marker.length - status.length) +
     marker +
-    heartbeat
+    status
   );
 }
 
@@ -234,7 +246,53 @@ export class TelegramSessionConnection {
   private activeDraft?: ActiveDraft;
   private draftWrites: Promise<void> = Promise.resolve();
 
+  private incoming?: { controller: AbortController; task: Promise<void> };
   private lastDraftErrorAt = 0;
+
+  async downloadIncomingFile(fileId: string, externalSignal: AbortSignal): Promise<Response> {
+    const signal = AbortSignal.any([this.controller.signal, externalSignal]);
+    signal.throwIfAborted();
+    const file = await this.call<{ file_path?: string; file_size?: number }>("getFile", { file_id: fileId }, signal);
+    if (file.file_size !== undefined && file.file_size > INCOMING_FILE_LIMIT)
+      throw new Error("Incoming files must not exceed 20 MB.");
+    const path = file.file_path;
+    if (!path || !/^[a-zA-Z0-9_/-]+\.[a-zA-Z0-9]+$/.test(path) || path.startsWith("/") || path.split("/").some(part => part === ".." || part === "."))
+      throw new Error("Telegram returned an invalid file download path.");
+    try {
+      const response = await fetch(`https://api.telegram.org/file/bot${this.token}/${path}`, { signal, redirect: "error" });
+      if (!response.ok) throw new Error("download failed");
+      return response;
+    } catch { throw new Error("Telegram file download failed or was cancelled."); }
+  }
+  private updateOffer?: { nonce: string; messageId: number; act: (approved: boolean) => void | Promise<void> };
+
+  async offerUpdate(text: string, version: string, act: (approved: boolean) => void | Promise<void>): Promise<void> {
+    const nonce = randomBytes(12).toString("hex");
+    const message = await this.call<TelegramMessage>("sendMessage", {
+      chat_id: this.ownerUserId, text,
+      reply_markup: { inline_keyboard: [[
+        { text: `Update to v${version}`, callback_data: `update:${nonce}:yes` },
+        { text: "Not now", callback_data: `update:${nonce}:no` },
+      ]] },
+    }, this.controller.signal);
+    this.updateOffer = { nonce, messageId: message.message_id, act };
+  }
+
+  private async handleUpdateButton(query: NonNullable<TelegramUpdate["callback_query"]>): Promise<void> {
+    if (query.from.id !== this.ownerUserId || query.from.is_bot ||
+        query.message?.chat.id !== this.ownerUserId || query.message.chat.type !== "private") return;
+    const offer = this.updateOffer;
+    const approved = query.data === `update:${offer?.nonce}:yes`;
+    const valid = offer && query.message.message_id === offer.messageId &&
+      (approved || query.data === `update:${offer.nonce}:no`);
+    if (valid) this.updateOffer = undefined; // Consume before any await; duplicate clicks cannot reinstall.
+    await this.call("answerCallbackQuery", {
+      callback_query_id: query.id, text: valid ? (approved ? "Update approved" : "Update postponed") : "This update offer has expired.",
+    }, this.controller.signal).catch(() => undefined);
+    if (!valid) return;
+    await this.call("editMessageReplyMarkup", { chat_id: this.ownerUserId, message_id: offer.messageId, reply_markup: { inline_keyboard: [] } }, this.controller.signal).catch(() => undefined);
+    if (!this.controller.signal.aborted) await offer.act(approved);
+  }
 
   constructor(
     private readonly token: string,
@@ -265,7 +323,7 @@ export class TelegramSessionConnection {
     onStatusRequested: () => string | Promise<string>,
     onReloadRequested: () => boolean | Promise<boolean>,
   ): Promise<void> {
-    const allowedUpdates = ["message"];
+    const allowedUpdates = ["message", "callback_query"];
     const webhook = await this.call<{ url: string }>(
       "getWebhookInfo",
       {},
@@ -333,7 +391,10 @@ export class TelegramSessionConnection {
   }
 
   async stop(): Promise<void> {
+    this.updateOffer = undefined;
     this.controller.abort();
+    this.incoming?.controller.abort();
+    await this.incoming?.task.catch(() => undefined);
     await this.cancelRichDraft();
     await this.polling?.catch(() => undefined);
     this.polling = undefined;
@@ -397,9 +458,8 @@ export class TelegramSessionConnection {
     const draft = this.activeDraft;
     if (!draft) return;
     const activity = activityForTool(toolName);
-    if (activity === draft.activity && !draft.plain) return;
+    if (activity === draft.activity) return;
     draft.activity = activity;
-    if (draft.plain) return;
     this.scheduleDraftWrite(draft);
   }
 
@@ -575,14 +635,43 @@ export class TelegramSessionConnection {
           if (this.controller.signal.aborted) return;
           this.offset = update.update_id + 1;
 
+          if (update.callback_query) {
+            await this.handleUpdateButton(update.callback_query);
+            continue;
+          }
           const message = update.message;
           if (
-            !message?.text ||
+            !message ||
             message.chat.type !== "private" ||
             message.chat.id !== this.ownerUserId ||
             message.from?.id !== this.ownerUserId ||
             message.from.is_bot
           ) {
+            continue;
+          }
+          const document = message.document;
+          const photo = message.photo?.slice().sort((a, b) => a.width * a.height - b.width * b.height).at(-1);
+          if (document || photo) {
+            if (this.incoming) {
+              await this.sendPlainMessage("A file is still downloading. Please resend this attachment after it finishes.");
+              continue;
+            }
+            const attachment: IncomingAttachment = document
+              ? { fileId: document.file_id, fileName: document.file_name || "document.bin", size: document.file_size, kind: "document" }
+              : { fileId: photo!.file_id, fileName: "photo.jpg", size: photo!.file_size, kind: "photo" };
+            const controller = new AbortController();
+            const reception = { controller, task: Promise.resolve() };
+            this.incoming = reception;
+            reception.task = Promise.resolve().then(() => onMessage({
+              text: message.caption || "", messageId: message.message_id, attachment,
+              downloadSignal: AbortSignal.any([controller.signal, this.controller.signal, AbortSignal.timeout(120_000)]),
+            })).catch(async () => {
+              if (!this.controller.signal.aborted) await this.sendPlainMessage("File reception failed or was cancelled. Please resend the attachment.").catch(() => undefined);
+            }).finally(() => { if (this.incoming === reception) this.incoming = undefined; });
+            continue;
+          }
+          if (!message.text) {
+            await this.sendPlainMessage("Send a document or photo to attach a file. Other incoming media types are not supported yet.");
             continue;
           }
           const text = message.text.trim();
@@ -620,12 +709,19 @@ export class TelegramSessionConnection {
             continue;
           }
           if (commandName === "stop" || text.toLowerCase() === "stop") {
-            if (this.options.canStop?.() ?? false) {
+            if (this.incoming) {
+              this.incoming.controller.abort();
+              await this.sendPlainMessage("File download cancellation requested.");
+            } else if (this.options.canStop?.() ?? false) {
               await this.cancelRichDraft();
               onStopRequested();
             } else {
               await this.sendPlainMessage("Nothing is currently running.");
             }
+            continue;
+          }
+          if (this.incoming) {
+            await this.sendPlainMessage("A file is still downloading. Please resend your instruction after it finishes, or send /stop to cancel.");
             continue;
           }
           await onMessage({

@@ -9,6 +9,7 @@ export interface HostIdentity {
 export interface SessionStartupDetails extends HostIdentity {
   projectName: string;
   branch?: string;
+  version?: string;
 }
 
 function isPrivateIpv4(address: string): boolean {
@@ -56,7 +57,7 @@ function formatSessionMessage(
 export function formatSessionStartupMessage(
   details: SessionStartupDetails,
 ): string {
-  return `Connected · ${details.projectName} · ${details.ip}`;
+  return `Connected · ${details.projectName} · ${details.ip}${details.version ? ` · v${details.version}` : ""}`;
 }
 
 export function formatSessionStatusMessage(

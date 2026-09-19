@@ -18,6 +18,11 @@ test("formatSessionStartupMessage shows only connection, project, and IP on one 
   );
 });
 
+test("startup includes the captured running version on the same line", () => {
+  assert.equal(formatSessionStartupMessage({ projectName: "Demo", hostname: "host", ip: "192.168.1.2", version: "0.2.2" }),
+    "Connected · Demo · 192.168.1.2 · v0.2.2");
+});
+
 test("formatSessionStatusMessage uses the status heading", () => {
   const message = formatSessionStatusMessage({
     projectName: "SampleProject",

@@ -11,6 +11,31 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## Incoming files (0.2.3)
+
+- Paired owners can send private documents/photos with optional captions. Captions are follow-up instructions, never Telegram commands or steering. Captionless attachments ask the agent to request instructions before inspection.
+- `src/incoming-files.ts` streams to `.pi/telegram-inbox/` with unique sanitized names, Git-ignore/tracked-path checks, symlink rejection, 20 MB file and 100 files/100 MB inbox limits, and partial-download cleanup. Files persist until manually removed; no automatic execution/extraction, secret scanning or malware scanning.
+- Downloads are connection-bound, abort on stop/disconnect, and do not block polling. One reception per connection; extra attachments/ordinary text during transfer receive explicit resend notices. Live upload smoke testing remains pending.
+
+## Working-status fixes (0.2.3)
+
+- Request activity resumes after completed messages and on authenticated assistant starts until `agent_settled`; parallel tools are tracked by call ID.
+- Plain progress retains a visible generic activity label and changing heartbeat. Busy follow-ups receive a Queued acknowledgement without replacing active drafts.
+- Regression tests added; live Telegram verification remains pending; the user authorized the 0.2.3 release with that limitation. `docs/working-status-investigation.md` records the prior behavior; its diagnostic artifact describes the pre-fix implementation.
+
+## Update notifications (0.2.3)
+
+- Startup includes the version captured when the extension factory loads. Background npm latest checks run on session startup/reload, with an eight-second timeout and PI_OFFLINE support; unassigned sessions stay silent.
+- Owner-only native Update/Not now callback buttons use one-use connection-local nonces and exact message/chat validation. Approval queues an internal command, waits for idle, installs the exact offered version, then reloads only that session. Disconnect clears approval and aborts work.
+- Only standard Pi npm prefixes are eligible; local/Git/symlinked/pinned/custom-manager installations are notification-only. npm is invoked through Node and npm-cli.js (no shell interpolation), with host-local update locking and installed-version checks. No automatic rollback or retry; raw npm output is not sent to Telegram.
+- Automated tests cover version checks, protected installations, callback ownership/replay, idle deferral, cancellation and failed installs. Reload and live update/install smoke testing remain pending.
+
+## Completion shortcuts (0.2.3)
+
+- `telegram_complete_setup` and `/telegram-complete-setup` finish pending managed creation without Add-menu navigation. “Done” is contextual tool guidance, not a global keyword interceptor.
+- New pending requests store canonical project path and persistent session ID. Other sessions/projects cannot complete them; legacy requests require explicit local recovery confirmation. Manager mutation compares the exact pending snapshot, preventing cancellation/replacement races from resurrecting requests.
+- `/telegram-start` offers the initiating session's pending completion first. Local interactive UI, webhook and transfer confirmations remain required; live smoke testing and reload are pending.
+
 ## Photo delivery (released in 0.2.2)
 
 - Added separate `telegram_send_photo` for inline PNG/JPEG delivery with 10 MB, dimension-sum (10,000), and aspect-ratio (20:1) checks. `sharp` is a runtime dependency for actual image decoding/validation.
@@ -58,7 +83,7 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 
 ## Telegram and AI integration
 
-- Accept only private text from the stored Telegram owner.
+- Accept only private text and supported document/photo attachments from the stored Telegram owner.
 - Ordinary messages are follow-ups; `!` requests steering and `!!` escapes a literal bang. Reject Telegram steering into a running console-originated task.
 - One-use in-memory request receipts admitted via Pi's extension input source bind output to the receiving connection. The public transport prefix is formatting guidance, not evidence of origin. Clear receipts on disconnect/session replacement.
 - Stream only public commentary and final-answer text. Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
@@ -80,6 +105,7 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 - `src/bot-api.ts` — identity validation, managed-bot APIs, owner pairing.
 - `src/telegram.ts` — polling, native commands, drafts, Rich Messages, uploads.
 - `src/files.ts`, `src/photos.ts`, `src/host.ts` — safe attachments, image validation, and startup/status host information.
+- `src/updates.ts` — loaded package identity, registry checks, safe npm installation targeting, idle update sequencing and installation locking.
 - `tests/` — unit and mocked lifecycle tests, including transfer races, rollback, offline release, cancellation, lease contention, and request-origin isolation.
 - `docs/architecture.md` — design and runtime flows.
 - `docs/telegram-rich-messages.md`, `docs/telegram-draft-ux-baseline.md` — API evaluation and tested draft UX.
