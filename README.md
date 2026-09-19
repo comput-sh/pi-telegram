@@ -2,11 +2,11 @@
 
 Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/earendil-works/pi-mono) sessions.
 
-Pi Telegram supports multiple project bots, persistent Pi-session assignments, owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
+Pi Telegram supports multiple project bots, persistent Pi-session assignments, owner-only input, explicit follow-up and steering semantics, explicit asynchronous messaging, removable Working status, Rich Markdown messages, cancellation, command menus, and project-file attachments.
 
 ## Release status
 
-**0.2.5** adds automatic assigned-session startup retries and streams public assistant text without waiting for phase metadata. Multiline previews retain a visible activity indicator during tools and pauses. Live reload/update and streaming verification remain pending. The release retains `telegram_ask` question buttons from 0.2.4. It includes the incoming documents/photos, working-status fixes, setup shortcuts and update notifications introduced in 0.2.3. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.3.0** introduces explicit asynchronous messaging through `telegram_send`, replacing `telegram_ask` and automatic reply streaming. Messages, Working status, and buttons are independently optional; omitting status clears Working. Proactive text sends no longer require an inbound Telegram request. Startup sends Connected before optional menu setup. Publication uses GitHub Actions Trusted Publishing with signed provenance; live activation and reload testing remain pending.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 
@@ -26,9 +26,23 @@ pi install git:github.com/mbundgaard/PiTelegram
 
 Start a new Pi session or run `/reload` after installation. Installation is global but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session. Interactive setup requires Pi's local terminal UI; masked token setup is not available through RPC or non-interactive modes.
 
-## Questions with buttons
+## Explicit asynchronous messaging
 
-During a Telegram-originated request, the agent can use `telegram_ask` to send a Rich Markdown question with 1–8 custom inline buttons. Each option has a visible `label` (up to 64 characters) and a `reply` (up to 1,024 characters). The question can contain up to 4,096 characters.
+Version 0.3.0 replaces `telegram_ask` and automatic response streaming with `telegram_send`. Update the installed package and reload to activate it. **Migration:** agents must explicitly call `telegram_send` for every intended reply; ordinary commentary and final text are no longer forwarded.
+
+`telegram_send` accepts three optional elements:
+
+- `message`: Rich Markdown, up to 32,768 characters (4,096 with buttons).
+- `status`: `"working"` shows Working. **Omitting status removes the existing indicator**; there is no Idle state. Working is a separate removable message with a heartbeat, not a Telegram chat action. It expires after 15 minutes unless refreshed; stop/disconnect clean it up best-effort.
+- `buttons`: 1–8 distinct `label`/`reply` choices; requires a message. Labels allow 64 characters and replies 1,024.
+
+```json
+{"message":"Checking the tests…","status":"working"}
+{"message":"Done—the tests passed."}
+{"message":"Apply the changes?","buttons":[{"label":"Apply","reply":"Apply the proposed changes."}]}
+```
+
+Status-only calls work; `{}` clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
 
 Only the paired owner can select an option. The selected question, label and reply re-enter the same connection's authenticated input path as a normal follow-up, never as a steering command. Sending the question does not grant approval or block the tool waiting for an answer.
 
@@ -159,15 +173,13 @@ Startup never removes a newly configured webhook: use `/telegram-start` to expli
 
 ## Responses
 
-- When Pi starts processing a Telegram request, Telegram shows a native Rich Thinking or tool-activity draft. Queued follow-ups do not start their own draft until processed.
-- The first public commentary replaces that draft with one evolving plain progress line.
-- Tool activity never switches back to generic Thinking after public progress appears.
-- Only public commentary and final-answer text are streamed; hidden reasoning and raw tool traffic stay private.
-- In-memory, one-use request receipts bind replies to the receiving connection; a copied transport notice alone cannot redirect console output.
-- Telegram steering is rejected while a local-console task is running; normal messages can queue a separate request.
-- Stop tracks the active Telegram request independently of draft rendering.
-- Background draft delivery failures produce rate-limited local warnings.
-- Completed responses are persisted as native Telegram Rich Messages.
+- Authenticate and enqueue inbound messages with guidance to reply through `telegram_send`; polling continues independently.
+- No automatic assistant-text forwarding or Thinking/tool previews. Explicit sends persist as Telegram Rich Messages.
+- In-memory receipts preserve inbound provenance for steering, Stop, files, and stale-connection protection. A copied transport notice is not authentication.
+- Proactive text sends require this session's verified assignment, not a prior inbound request. Console transcripts are never automatically forwarded.
+- Telegram steering into a local-console task is rejected; ordinary messages can queue.
+- Native connection/queue acknowledgements, commands, update prompts, and attachment notices remain extension-controlled.
+- Working is explicitly controlled by the tool; omitted status removes it. Cleanup is best-effort on disconnect/network failure. Failed sends report uncertain delivery without automatic replay.
 
 ## File attachments
 

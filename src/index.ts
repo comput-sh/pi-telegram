@@ -71,7 +71,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
       const content = responses.origins.enqueue(routed.text, current);
       pi.sendUserMessage(content, { deliverAs: routed.deliverAs });
       if (queued) {
-        // Acknowledge separately: never replace the active request's draft.
+        // Transport acknowledgement, not an automatic agent reply.
         await current.sendPlainMessage("Queued — I’ll start this after the current task.")
           .catch(() => ctx.ui.notify("Telegram queue acknowledgement failed.", "warning"));
       }
@@ -360,20 +360,30 @@ export default function piTelegram(pi: ExtensionAPI): void {
     },
   });
   pi.registerTool({
-    name: "telegram_ask",
-    label: "Ask with Telegram Buttons",
-    description: "Send a Rich Markdown question with 1–8 inline choice buttons during an active Telegram-originated request. Each option has a visible label and a reply sent back as an authenticated follow-up. Only one question is active per connection; a new question or typed answer supersedes it. Buttons expire after 15 minutes or disconnect. Returns after sending, not after the user's answer.",
-    promptSnippet: "Ask the Telegram owner a question with custom choice buttons",
-    promptGuidelines: ["Use telegram_ask when offering choices during a Telegram request. Use clear labels and replies that accurately reflect each choice. After sending, wait for the owner's answer; do not treat tool success as approval or repeat the question in your final response. Buttons do not bypass local setup/security confirmations."],
+    name: "telegram_send",
+    label: "Send to Telegram",
+    description: "Explicitly send to the owner of this session's connected bot, including from console or scheduled work; no Telegram-originated request is required. Optional message is Rich Markdown (32768 characters; 4096 with buttons). Optional status is working; omitting it removes the existing Working indicator, never displays Idle. Optional buttons require a message and contain 1–8 distinct label/reply choices. Status-only calls are supported; an empty object clears status. Returns after delivery, never waits for an answer. Buttons expire after 15 minutes; selections arrive as authenticated follow-ups. No automatic setup, routing to other sessions, or approval bypass.",
+    promptSnippet: "Explicitly send Telegram messages, working status, and optional choice buttons",
+    promptGuidelines: [
+      "Use telegram_send for every intended Telegram reply or progress update; ordinary assistant text is not forwarded. Use it for requested proactive notifications from console or scheduled tasks only through this session's connected bot.",
+      "With telegram_send, specify status: working to show/maintain Working; omit status on final messages or waiting-for-user questions to remove the indicator. A status-only call is allowed. Working expires after 15 minutes unless refreshed; do not leave misleading status.",
+      "Use optional telegram_send buttons for choices. Labels and replies must match the user's visible choice. Tool success means sent, not approved; await the actual reply. Never expose hidden reasoning, raw tool results, credentials or private prompts. No automatic console transcript forwarding.",
+    ],
     parameters: Type.Object({
-      question: Type.String({ minLength: 1, maxLength: 4096 }),
-      options: Type.Array(Type.Object({ label: Type.String({ minLength: 1, maxLength: 64 }), reply: Type.String({ minLength: 1, maxLength: 1024 }) }, { additionalProperties: false }), { minItems: 1, maxItems: 8 }),
+      message: Type.Optional(Type.String({ minLength: 1, maxLength: 32768 })),
+      status: Type.Optional(Type.String({ pattern: "^working$", description: "working shows activity; omission removes existing status" })),
+      buttons: Type.Optional(Type.Array(Type.Object({ label: Type.String({ minLength: 1, maxLength: 64 }), reply: Type.String({ minLength: 1, maxLength: 1024 }) }, { additionalProperties: false }), { minItems: 1, maxItems: 8 })),
     }, { additionalProperties: false }),
-    async execute(_id, params, signal) {
-      const target = responses.destination();
-      if (!target) throw new Error("Questions require an active Telegram-originated request.");
-      await target.askQuestion(params.question, params.options, signal);
-      return { content: [{ type: "text", text: "Question sent with buttons. Await the owner's reply; no choice has been made yet." }], details: { status: "sent" } };
+    async execute(_id, params, signal, _update, ctx) {
+      const target = responses.outboundDestination();
+      if (!target || !connections.isReady) throw new Error("No ready Telegram destination for this session. Connect locally; stale requests cannot switch bots.");
+      const saved = await loadProjectSettings(ctx.cwd);
+      const assigned = saved && findSessionBot(saved, ctx.sessionManager.getSessionId());
+      if (!assigned || assigned.id !== connections.bot?.id || assigned.token !== connections.bot?.token || assigned.ownerUserId !== connections.bot?.ownerUserId || responses.outboundDestination() !== target)
+        throw new Error("Telegram assignment changed; message was not sent.");
+      if (params.status !== undefined && params.status !== "working") throw new Error("Omit status to clear it; only working is supported.");
+      await target.sendOutbound(params.message, params.status, params.buttons, signal);
+      return { content: [{ type: "text", text: params.buttons ? "Message and buttons sent. Await the owner's reply; no choice has been made." : "Telegram send/status operation completed." }], details: { status: "sent" } };
     },
   });
   for (const photo of [false, true]) pi.registerTool({

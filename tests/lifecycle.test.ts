@@ -98,7 +98,7 @@ function harness(cwd: string, sessionId = "main") {
     inputs,
     emit,
     command: (name: string) => commands.get(name)!("", ctx),
-    tool: (name: string) => tools.get(name).execute("test", {}, undefined, undefined, ctx),
+    tool: (name: string, params: unknown = {}) => tools.get(name).execute("test", params, undefined, undefined, ctx),
     prompts: () => prompts,
     setIdle: (value: boolean) => {
       idle = value;
@@ -388,16 +388,19 @@ test("new/fork sessions stay passive; resume reconnects; duplicate process canno
     const fork = harness(cwd, "fork");
     try {
       await main.emit("session_start", { reason: "startup" });
-      const count = network.calls.length;
+      // Menu configuration now completes in the background for the original
+      // connection; it is not evidence that the duplicate started polling.
+      const connectionCalls = () => network.calls.filter(method => method !== "setMyCommands" && method !== "setChatMenuButton").length;
+      const count = connectionCalls();
       await duplicate.emit("session_start", { reason: "resume" });
-      assert.equal(network.calls.length, count);
+      assert.equal(connectionCalls(), count);
       await duplicate.emit("session_shutdown");
       await main.emit("session_shutdown", { reason: "fork" });
       await fork.emit("session_start", { reason: "fork" });
-      assert.equal(network.calls.length, count);
+      assert.equal(connectionCalls(), count);
       await fork.emit("session_shutdown", { reason: "resume" });
       await main.emit("session_start", { reason: "resume" });
-      assert.ok(network.calls.length > count);
+      assert.ok(connectionCalls() > count);
       assert.equal(main.prompts(), 0);
     } finally {
       await main.emit("session_shutdown");
@@ -561,7 +564,9 @@ test("owner documents become request-bound saved attachments; captions are not c
       const text = pi.sent[0]!;
       await pi.emit("input", { text, source: "extension" });
       await pi.emit("message_start", { message: { role: "user", content: text } });
-      assert.ok(network.calls.includes("sendRichMessageDraft"));
+      assert.ok(!network.calls.includes("sendRichMessageDraft"));
+      await pi.tool("telegram_send", { message: "Received your file." });
+      assert.ok(network.calls.includes("sendRichMessage"));
     } finally { await pi.emit("session_shutdown"); }
   }));
 
@@ -628,7 +633,23 @@ test("startup recovers from a transient failure and reconnects across repeated r
     } finally { await pi.emit("session_shutdown"); }
   }));
 
-test("a real inbound request routes through its receipt to the receiving bot", async () =>
+test("telegram_send can notify proactively, but requires this session's verified assignment", async () =>
+  fixture(async (cwd, network) => {
+    const pi = harness(cwd);
+    await assert.rejects(pi.tool("telegram_send", { message: "not connected" }), /No ready Telegram/);
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    try {
+      await pi.emit("session_start");
+      // No Telegram receipt or inbound user message has been created.
+      await pi.tool("telegram_send", { message: "Background task finished" });
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
+      await saveProjectSettings(cwd, { version: 2, bots: [bot("111", "other")] });
+      await assert.rejects(pi.tool("telegram_send", { message: "wrong session" }), /assignment changed|No ready/);
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("inbound requests are delivered without automatic replies; telegram_send replies explicitly", async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
     network.inbound.push({
@@ -656,11 +677,10 @@ test("a real inbound request routes through its receipt to the receiving bot", a
           stopReason: "stop",
         },
       });
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 0);
+      await pi.tool("telegram_send", { message: "Explicit reply" });
       await pi.emit("agent_settled");
-      assert.equal(
-        network.calls.filter((method) => method === "sendRichMessage").length,
-        1,
-      );
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
     } finally {
       await pi.emit("session_shutdown");
     }
@@ -682,7 +702,7 @@ test("busy follow-ups are acknowledged without starting a draft prematurely", as
       const text = pi.sent[0]!;
       await pi.emit("input", { text, source: "extension" });
       await pi.emit("message_start", { message: { role: "user", content: text } });
-      assert.ok(network.calls.includes("sendRichMessageDraft"));
+      assert.ok(!network.calls.includes("sendRichMessageDraft"));
     } finally { await pi.emit("session_shutdown"); }
   }));
 

@@ -150,13 +150,13 @@ Session shutdown aborts pending setup as well as polling, then releases the runt
 
 - Accept only private messages from the stored owner.
 - Ordinary input uses `deliverAs: "followUp"`; `!` uses `"steer"`; `!!` escapes a literal bang.
-- Send output only for one-use in-memory request receipts admitted through Pi's `input.source === "extension"`. The transport notice itself is not an authorization signal.
-- Bind each receipt to its receiving connection; invalidate receipts on disconnect/session replacement. Never replay old transcript messages in the settled fallback.
+- Deliver inbound messages using one-use in-memory receipts admitted through Pi's `input.source === "extension"`. The transport notice is guidance, not authentication.
+- Bind each receipt to its receiving connection; retire queued receipts on disconnect/session replacement so old queued work cannot send to a new bot. No transcript replay or automatic response forwarding.
+- `telegram_send` independently sends optional Rich Markdown, optional `working` status, and optional buttons. It requires the current session's ready, persisted assignment but not an inbound request. A stale active inbound request cannot redirect to a replacement connection.
 - Reject Telegram steering into a local-console task; normal Telegram requests may queue separately.
-- Track stop eligibility independently of draft visibility, and surface background draft failures with rate-limited warnings.
-- Show a native Rich Thinking/tool draft immediately.
-- Replace activity with one evolving plain public-commentary draft.
-- Stream only public final-answer text and persist completion with `sendRichMessage`.
+- Track stop eligibility from inbound provenance, not visual status. Proactive sends do not grant permission to stop unrelated console work.
+- Status is a separate removable Working message with a five-second heartbeat and 15-minute expiry, not a chat action or automatic draft. Omitted status deletes it. Stop/disconnect clean it up best-effort.
+- Serialize explicit outbound calls, fence them to the connection, and report uncertain delivery without replay. Only explicit sends publish agent content; control/queue/attachment notices remain extension-controlled.
 - Keep hidden reasoning, prompts, raw tool arguments/results, and credentials private.
 - Let `/help`, `/status`, `/stop`, and `/reload` bypass the model.
 - Allow `telegram_send_file` only during a Telegram-originated request and only for safe project files.
@@ -179,7 +179,7 @@ Session shutdown aborts pending setup as well as polling, then releases the runt
 - `connection-manager.ts`: connection lifetime, polling ownership, and monitoring.
 - `setup-flow.ts`: menus, pairing/recovery workflows, and rollback orchestration.
 - `assignment.ts`: compare-and-swap assignment transactions.
-- `request-routing.ts`: request origin receipts and public response lifecycle.
+- `request-routing.ts`: inbound origin receipts, stale-request protection, and explicit-send destination selection (no public response mirroring).
 - `locks.ts` / `runtime-lease.ts`: heartbeat-based exclusion.
 - `setup.ts`: masked local input and cancellable pairing UI.
 

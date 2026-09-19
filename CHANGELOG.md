@@ -2,6 +2,19 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## 0.3.0
+
+**Breaking change:** agents must use `telegram_send` for Telegram replies and progress. `telegram_ask` is removed; ordinary assistant text is no longer forwarded. Update the npm installation and reload to activate. Live asynchronous messaging and reload smoke testing remain pending.
+
+- Replace `telegram_ask` and automatic assistant response streaming with explicit `telegram_send`: optional Rich Markdown message, optional Working status, and optional authenticated choice buttons. Omitting status removes the indicator; status-only calls are supported.
+- Allow proactive explicit text sends from console/scheduled tasks through the current session's verified assignment. Retain request-bound file/photo safeguards and reject stale inbound work after connection replacement.
+- Remove automatic response phase/tool lifecycle tracking. Inbound delivery supplies reply guidance and continues polling independently. Working is a removable heartbeat message with 15-minute expiry and best-effort stop/disconnect cleanup; no Idle label. Control and queue acknowledgements remain extension-controlled.
+
+- Send the required Connected notice before optional command-menu setup. Menu API calls now run in connection-bound background work, so slow/failing menus cannot consume the startup deadline or undo a successful connection.
+- Remove the unused Git-branch lookup from startup; `/status` still includes the branch.
+- Report an existing connection as ready only after Telegram accepts its Connected notice. Keep failed-notice cleanup/retry behavior.
+- Add regression tests for stalled menu calls, menu errors, cancellation and readiness during notification delivery. Live reload verification remains pending; installed npm copies are unchanged until updated.
+
 ## 0.2.5
 
 - Stream authenticated public assistant text without requiring commentary/final-answer phase metadata. The first public text switches to a plain preview immediately; subsequent updates remain coalesced to limit API traffic.

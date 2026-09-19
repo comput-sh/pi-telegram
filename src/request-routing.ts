@@ -1,191 +1,72 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  extractPublicAssistantText,
-  type AssistantMessageLike,
-} from "./messages.ts";
 import { wrapTelegramInput } from "./routing.ts";
 import type { TelegramSessionConnection } from "./telegram.ts";
 
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  return content
-    .filter((part) => part?.type === "text")
-    .map((part) => part.text)
-    .join("\n");
+  return content.filter(part => part?.type === "text").map(part => part.text).join("\n");
 }
+interface Origin<T> { destination: T; admitted: boolean }
 
-interface Origin<T> {
-  destination: T;
-  admitted: boolean;
-}
-
-// A public transport notice is formatting guidance, NOT evidence of origin.
-// Only a one-use in-memory receipt, admitted through Pi's extension input source,
-// can establish the destination. Receipts do not survive reload/session changes.
+// The public transport prefix is guidance, not authentication. Only a one-use
+// receipt admitted through extension input can establish inbound provenance.
 export class RequestOrigins<T> {
   private pending = new Map<string, Origin<T>>();
   current?: T;
+  private retired = new Set<string>();
+  private currentText?: string;
+  invalidated = false;
   enqueue(text: string, destination: T): string {
-    if (this.pending.size >= 100)
-      throw new Error("Too many pending Telegram requests.");
+    if (this.pending.size >= 100) throw new Error("Too many pending Telegram requests.");
     const content = `${wrapTelegramInput(text)}\n\n[Pi Telegram request: ${randomUUID()}]`;
     this.pending.set(content, { destination, admitted: false });
     return content;
   }
   admit(text: string, source: string): void {
     const origin = this.pending.get(text);
-    if (source !== "extension") {
-      this.pending.delete(text);
-      return;
-    }
+    if (source !== "extension") { this.pending.delete(text); return; }
     if (origin) origin.admitted = true;
   }
   begin(content: unknown): T | undefined {
     const text = textOf(content);
     const origin = this.pending.get(text);
     this.pending.delete(text);
+    this.invalidated = this.retired.has(text);
+    this.currentText = origin?.admitted ? text : undefined;
     this.current = origin?.admitted ? origin.destination : undefined;
     return this.current;
   }
   reset(): void {
-    this.pending.clear();
-    this.current = undefined;
+    for (const text of this.pending.keys()) this.retired.add(text);
+    if (this.currentText) this.retired.add(this.currentText);
+    this.pending.clear(); this.current = undefined; this.currentText = undefined;
   }
 }
 
-export function registerResponseRouting(
-  pi: ExtensionAPI,
-  currentConnection: () => TelegramSessionConnection | undefined,
-) {
+/** Inbound provenance only. No public-text mirroring, drafts or tool tracking. */
+export function registerResponseRouting(pi: ExtensionAPI, currentConnection: () => TelegramSessionConnection | undefined) {
   const origins = new RequestOrigins<TelegramSessionConnection>();
-  let latest: AssistantMessageLike | undefined;
-  let delivered = false;
-  const activeTools = new Map<string, string>();
-  let outbound = Promise.resolve();
-  const destination = () =>
-    origins.current === currentConnection() ? origins.current : undefined;
-  const reset = () => {
-    origins.reset();
-    activeTools.clear();
-    latest = undefined;
-    delivered = false;
+  let invalidatedRequest = false;
+  const destination = () => origins.current === currentConnection() ? origins.current : undefined;
+  const outboundDestination = () => {
+    if (invalidatedRequest || (origins.current && origins.current !== currentConnection())) return undefined;
+    return currentConnection();
   };
-  pi.on("input", (event) => {
-    origins.admit(event.text, event.source);
-  });
-  pi.on("message_start", async (event, ctx) => {
-    if (event.message.role === "assistant") {
-      try {
-        const target = destination();
-        if (target) {
-          latest = undefined;
-          delivered = false;
-          await target.beginRichDraft();
-          await target.setDraftActivity([...activeTools.values()].at(-1));
-        }
-      }
-      catch { ctx.ui.notify("Telegram activity draft failed.", "warning"); }
-      return;
-    }
+  const reset = () => {
+    invalidatedRequest ||= !!origins.current;
+    origins.reset();
+  };
+  pi.on("input", event => { origins.admit(event.text, event.source); });
+  pi.on("message_start", event => {
     if (event.message.role !== "user") return;
-    const previous = destination();
     origins.begin(event.message.content);
-    latest = undefined;
-    delivered = false;
-    if (previous !== destination()) {
-      activeTools.clear();
-      if (previous) await previous.cancelRichDraft();
-    }
-    const target = destination();
-    if (!target) return;
-    try {
-      await target.beginRichDraft();
-    } catch {
-      ctx.ui.notify(
-        "Telegram activity draft failed; response delivery will still be attempted.",
-        "warning",
-      );
-    }
+    invalidatedRequest = origins.invalidated;
   });
-  pi.on("tool_execution_start", async (event) => {
-    if (!destination()) return;
-    activeTools.set(event.toolCallId, event.toolName);
-    await destination()?.setDraftActivity(event.toolName);
+  pi.on("agent_settled", () => {
+    origins.current = undefined;
+    invalidatedRequest = false;
   });
-  pi.on("tool_execution_end", async (event) => {
-    activeTools.delete(event.toolCallId);
-    await destination()?.setDraftActivity([...activeTools.values()].at(-1));
-  });
-  pi.on("message_update", async (event, ctx) => {
-    const target = destination();
-    if (
-      !target ||
-      event.message.role !== "assistant" ||
-      event.assistantMessageEvent.type !== "text_delta"
-    )
-      return;
-    const text = extractPublicAssistantText(event.message);
-    if (!text) return;
-    try {
-      // Pi text blocks are public; thinking/tool blocks are filtered above.
-      // Replace with this message's accumulated text, regardless of provider phase.
-      await target.streamRichDraft(text);
-    } catch {
-      ctx.ui.notify("Telegram draft streaming failed.", "warning");
-    }
-  });
-  pi.on("message_end", async (event, ctx) => {
-    const target = destination();
-    if (!target || event.message.role !== "assistant") return;
-    const text = extractPublicAssistantText(event.message);
-    if (!text) return;
-    latest = event.message;
-    const stopReason = event.message.stopReason;
-    delivered = false;
-    outbound = outbound.then(async () => {
-      if (destination() !== target) return;
-      try {
-        if (stopReason === "toolUse") await target.updateRichDraft(text);
-        else if (stopReason === "stop" || stopReason === "length") {
-          await target.sendRichMessage(text);
-          delivered = true;
-          // A completed message is not necessarily a settled request (e.g.
-          // automatic compaction or a length-limit retry). Keep activity alive.
-          if (destination() === target) {
-            try { await target.beginRichDraft(); }
-            catch { ctx.ui.notify("Telegram continuation activity draft failed.", "warning"); }
-          }
-        }
-      } catch {
-        ctx.ui.notify("Telegram response delivery failed.", "warning");
-      }
-    });
-    await outbound;
-  });
-  pi.on("agent_settled", async (_event, ctx) => {
-    const target = destination();
-    await outbound;
-    // Retry only this request's completed response, never an older transcript entry.
-    try {
-      if (
-        target &&
-        !delivered &&
-        (latest?.stopReason === "stop" || latest?.stopReason === "length")
-      ) {
-        const text = extractPublicAssistantText(latest);
-        if (text && destination() === target)
-          await target.sendRichMessage(text);
-      }
-    } catch {
-      ctx.ui.notify("Telegram final response retry failed.", "warning");
-    } finally {
-      if (target) await target.cancelRichDraft();
-      origins.current = undefined;
-      activeTools.clear();
-      latest = undefined;
-    }
-  });
-  return { origins, destination, reset };
+  return { origins, destination, outboundDestination, reset };
 }

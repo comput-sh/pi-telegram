@@ -240,6 +240,14 @@ function validateRichMarkdown(markdown: string): void {
   }
 }
 
+function validateQuestion(text: string, options: Array<{ label: string; reply: string }>): void {
+  if (!text.trim() || text.length > 4096 || options.length < 1 || options.length > 8 ||
+      options.some(option => !option.label.trim() || option.label.length > 64 || !option.reply.trim() || option.reply.length > 1024))
+    throw new Error("Questions require 1–8 options, question <=4096 characters, labels <=64 and replies <=1024; values cannot be blank.");
+  if (new Set(options.map(option => option.label.trim().toLowerCase())).size !== options.length)
+    throw new Error("Question button labels must be distinct.");
+}
+
 export class TelegramSessionConnection {
   private readonly controller = new AbortController();
   private polling?: Promise<void>;
@@ -266,16 +274,81 @@ export class TelegramSessionConnection {
     } catch { throw new Error("Telegram file download failed or was cancelled."); }
   }
   private question?: { nonce: string; messageId: number; text: string; options: Array<{ label: string; reply: string }>; expires: number; timer: NodeJS.Timeout };
+  private outboundWrites: Promise<void> = Promise.resolve();
+  private workingStatus?: { id: number; heartbeat: NodeJS.Timeout; expiry: NodeJS.Timeout; tick: number };
+
+  private queueOutbound(work: () => Promise<void>): Promise<void> {
+    const task = this.outboundWrites.then(work);
+    this.outboundWrites = task.catch(() => undefined);
+    return task;
+  }
+
+  private async clearWorkingStatus(): Promise<void> {
+    const status = this.workingStatus;
+    if (!status) return;
+    clearInterval(status.heartbeat);
+    clearTimeout(status.expiry);
+    // Keep the ID if deletion fails so a later explicit send can retry cleanup.
+    await this.call("deleteMessage", { chat_id: this.ownerUserId, message_id: status.id }, AbortSignal.timeout(2_000));
+    if (this.workingStatus === status) this.workingStatus = undefined;
+  }
+
+  private async showWorkingStatus(signal: AbortSignal): Promise<void> {
+    await this.clearWorkingStatus();
+    signal.throwIfAborted();
+    const sent = await this.call<TelegramMessage>("sendMessage", { chat_id: this.ownerUserId, text: "Working…", disable_notification: true }, signal);
+    const status = { id: sent.message_id, tick: 0 } as NonNullable<typeof this.workingStatus>;
+    this.workingStatus = status;
+    // A separate removable status message avoids relying on draft expiry to
+    // implement the user's explicit "omitted status means remove it" contract.
+    status.heartbeat = setInterval(() => {
+      void this.queueOutbound(async () => {
+        if (this.workingStatus !== status || this.stopping) return;
+        await this.call("editMessageText", { chat_id: this.ownerUserId, message_id: status.id, text: `Working${".".repeat((++status.tick % 3) + 1)}` }, AbortSignal.timeout(5_000));
+      }).catch(() => this.reportDraftError());
+    }, 5_000);
+    status.expiry = setTimeout(() => {
+      clearInterval(status.heartbeat);
+      void this.queueOutbound(async () => {
+        if (this.workingStatus === status) await this.clearWorkingStatus();
+      }).catch(() => this.reportDraftError());
+    }, 15 * 60_000);
+    status.heartbeat.unref?.(); status.expiry.unref?.();
+    if (signal.aborted || this.stopping) {
+      await this.clearWorkingStatus().catch(() => undefined);
+      throw new Error("Telegram status update was cancelled.");
+    }
+  }
+
+  async sendOutbound(message?: string, status?: "working", buttons?: Array<{ label: string; reply: string }>, externalSignal?: AbortSignal): Promise<void> {
+    if (message !== undefined) {
+      if (!message.trim()) throw new Error("Telegram message cannot be blank.");
+      validateRichMarkdown(message);
+    }
+    if (status !== undefined && status !== "working") throw new Error("Supported status: working. Omit status to remove it.");
+    if (buttons && !message) throw new Error("Buttons require a message.");
+    if (buttons) validateQuestion(message!, buttons);
+    const signal = AbortSignal.any([this.controller.signal, ...(externalSignal ? [externalSignal] : [])]);
+    await this.queueOutbound(async () => {
+      signal.throwIfAborted();
+      if (this.stopping) throw new Error("Telegram is disconnecting.");
+      if (status === undefined || message !== undefined) await this.clearWorkingStatus();
+      signal.throwIfAborted();
+      if (message !== undefined) {
+        if (buttons) await this.askQuestion(message, buttons, signal);
+        else await this.call("sendRichMessage", { chat_id: this.ownerUserId, rich_message: { markdown: message } }, AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
+      }
+      signal.throwIfAborted();
+      if (status === "working") await this.showWorkingStatus(AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
+    }).catch(() => { throw new Error("Telegram send/status could not be confirmed. Delivery may have occurred; check the chat before retrying."); });
+  }
+
   private asking = false;
   private questionGeneration = 0;
   private stopping = false;
 
   async askQuestion(text: string, options: Array<{ label: string; reply: string }>, externalSignal?: AbortSignal): Promise<void> {
-    if (!text.trim() || text.length > 4096 || options.length < 1 || options.length > 8 ||
-        options.some(option => !option.label.trim() || option.label.length > 64 || !option.reply.trim() || option.reply.length > 1024))
-      throw new Error("Questions require 1–8 options, question <=4096 characters, labels <=64 and replies <=1024; values cannot be blank.");
-    if (new Set(options.map(option => option.label.trim().toLowerCase())).size !== options.length)
-      throw new Error("Question button labels must be distinct.");
+    validateQuestion(text, options);
     if (this.stopping) throw new Error("Telegram is disconnecting.");
     if (this.asking) throw new Error("Another Telegram question is being sent. Ask one question at a time.");
     const signal = AbortSignal.any([this.controller.signal, ...(externalSignal ? [externalSignal] : []), AbortSignal.timeout(20_000)]);
@@ -465,11 +538,14 @@ export class TelegramSessionConnection {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    await this.clearWorkingStatus().catch(() => undefined);
     await this.expireQuestion();
     this.updateOffer = undefined;
     this.controller.abort();
     this.incoming?.controller.abort();
     await this.incoming?.task.catch(() => undefined);
+    await this.outboundWrites;
+    if (this.workingStatus) { clearInterval(this.workingStatus.heartbeat); clearTimeout(this.workingStatus.expiry); this.workingStatus = undefined; }
     await this.cancelRichDraft();
     await this.polling?.catch(() => undefined);
     this.polling = undefined;
@@ -790,6 +866,7 @@ export class TelegramSessionConnection {
             continue;
           }
           if (commandName === "stop" || text.toLowerCase() === "stop") {
+            await this.queueOutbound(() => this.clearWorkingStatus()).catch(() => undefined);
             await this.expireQuestion();
             if (this.incoming) {
               this.incoming.controller.abort();

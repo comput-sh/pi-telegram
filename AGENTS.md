@@ -11,6 +11,19 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## 0.3.0 release preparation — explicit asynchronous messaging
+
+- `telegram_send` replaces `telegram_ask`: optional Rich Markdown `message`, optional `status: "working"`, optional label/reply `buttons` requiring a message. Omitted status removes Working; `{}` clears it. No Idle label. Tools return after delivery, never await a human answer.
+- Explicit text/status sends can originate in console/scheduled work, but require this session's ready, verified assignment. Inbound provenance remains for steering, Stop, files and stale-connection protection. Queued receipts retired at disconnect must not route to replacement bots.
+- Automatic assistant commentary/final streaming and tool/Thinking lifecycle mirroring are removed. Working uses a separate removable message with heartbeat and 15-minute expiry. Stop/disconnect cleanup is best-effort; command/queue/update/attachment notices remain automatic.
+- File/photo safeguards remain request-bound. User authorized 0.3.0 publication. Release validation: 102 tests passed, typecheck/pack/diff checks passed, zero audit vulnerabilities; 23 intended package files. Publication verification and live activation are pending; installed npm remains 0.2.5 until explicitly updated.
+
+## Connection-notice fix included in 0.3.0
+
+- Startup sends the required Connected notice before optional menu configuration, with no startup Git-branch lookup. Menus run as bounded connection-bound background work; failure warns locally without disconnecting a healthy session.
+- Existing initializing connections are not reported ready until the notice is accepted. Notice failure still tears down the connection for startup recovery.
+- Regression coverage in `tests/connection-notice.test.ts`; investigation recorded in `docs/reload-notice-investigation.md`. Installed npm remains unchanged; live reload testing is pending. Included in the authorized 0.3.0 release.
+
 ## Reliability/streaming fixes (released in 0.2.5)
 
 - Checkpoint `87ee97b` records reconnect recovery before streaming changes; both are included in 0.2.5. Startup retries assigned-session failures with bounded attempts/backoff and treats connection-notice failure as a failed connection. Retries stop on shutdown and recheck assignment.
@@ -99,9 +112,9 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 - Accept only private text and supported document/photo attachments from the stored Telegram owner.
 - Ordinary messages are follow-ups; `!` requests steering and `!!` escapes a literal bang. Reject Telegram steering into a running console-originated task.
 - One-use in-memory request receipts admitted via Pi's extension input source bind output to the receiving connection. The public transport prefix is formatting guidance, not evidence of origin. Clear receipts on disconnect/session replacement.
-- Stream only public commentary and final-answer text. Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
-- Preserve the hybrid lifecycle: Rich Thinking/tool activity → one evolving plain commentary/final draft → persisted Rich Markdown response. No MarkdownV2/plain-text fallback for model answers.
-- Stop eligibility is independent of draft visibility. Background draft failures produce rate-limited local warnings. Settled fallback must not replay an older transcript answer.
+- Do not automatically forward assistant text or tool activity. Agent content goes through explicit `telegram_send` calls, including proactive sends from console/scheduled work. Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
+- Persist explicit model messages as Rich Markdown with optional buttons. Omitted status removes Working; explicit `working` shows a removable status message. No MarkdownV2/plain-text fallback for model answers.
+- Stop eligibility follows inbound provenance, independently of status visibility. No settled transcript replay. Background status failures produce rate-limited local warnings.
 - Setup requires local interactive TUI; masked tokens must never pass through chat or model-callable tool arguments.
 
 ## Source map

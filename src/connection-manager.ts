@@ -22,6 +22,8 @@ export class ConnectionManager {
   private lease?: TelegramRuntimeLease;
   private timer?: NodeJS.Timeout;
   private epoch = 0;
+  private ready = false;
+  get isReady(): boolean { return this.ready && !!this.connection; }
   constructor(
     private readonly callbacks: {
       input(
@@ -43,6 +45,7 @@ export class ConnectionManager {
     const current = this.connection;
     const lease = this.lease;
     this.connection = undefined;
+    this.ready = false;
     this.bot = undefined;
     this.lease = undefined;
     if (this.timer) clearInterval(this.timer);
@@ -70,7 +73,7 @@ export class ConnectionManager {
         this.bot.sessionId === sessionId &&
         this.bot.token === bot.token
       )
-        return true;
+        return this.ready; // Polling may exist before the connection notice is accepted.
       throw new Error("This session already has a connected Telegram bot.");
     }
     const epoch = ++this.epoch;
@@ -103,7 +106,7 @@ export class ConnectionManager {
           this.connection === current && this.callbacks.canStop(current),
         onDraftError: () =>
           ctx.ui.notify(
-            "Telegram draft delivery failed; check connectivity and Bot API support.",
+            "Telegram status delivery failed; check connectivity and Bot API support.",
             "warning",
           ),
       },
@@ -202,25 +205,13 @@ export class ConnectionManager {
         );
       }, 1_000);
       this.timer.unref?.();
-      await current
-        .configureCommandMenu()
-        .catch(() =>
-          ctx.ui.notify(
-            "Telegram command menu could not be configured.",
-            "warning",
-          ),
-        );
-      check();
-      ctx.ui.setStatus(
-        "pi-telegram",
-        ctx.ui.theme.fg("success", `telegram: @${bot.username}`),
-      );
+      // Required notice first: optional menu calls must never consume the
+      // startup deadline while polling is already active but invisible.
       await current
         .sendPlainMessage(
           formatSessionStartupMessage({
             version: this.callbacks.version,
             projectName: basename(resolve(ctx.cwd)),
-            branch: await getGitBranch(ctx.cwd),
             ...getHostIdentity(),
           }),
         )
@@ -230,6 +221,17 @@ export class ConnectionManager {
           throw new Error("Telegram connection notice could not be delivered.");
         });
       check();
+      this.ready = true;
+      ctx.ui.setStatus(
+        "pi-telegram",
+        ctx.ui.theme.fg("success", `telegram: @${bot.username}`),
+      );
+      // Each menu API call is bounded and aborts with the connection. Do not
+      // bind this optional work to the now-completed startup attempt deadline.
+      void current.configureCommandMenu().catch(() => {
+        if (this.connection !== current || this.epoch !== epoch) return;
+        ctx.ui.notify("Telegram connected, but its command menu could not be configured.", "warning");
+      });
       this.callbacks.connected?.(current, ctx);
       return true;
     } catch (error) {

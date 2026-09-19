@@ -28,7 +28,7 @@ Telegram bot chats are not end-to-end encrypted. Public answers, requested docum
 - Manager polling is serialized with a private lock and one persisted pending request.
 - Project mutations are serialized; transfers, removal, and rollback check the confirmed snapshot under the lock. Releases verify the current persistent session assignment.
 - Host-local heartbeat leases protect both normal polling and owner pairing; lost ownership causes disconnection. They are not a cross-machine lock or a distributed bot registry. Do not run competing integrations on different hosts.
-- One-use in-memory request receipts bind responses to the receiving connection. A copied transport prefix cannot authorize output.
+- One-use in-memory request receipts establish inbound provenance and prevent stale requests from silently redirecting to replacement bots. A copied transport prefix is not authentication. Agent text is never automatically forwarded; explicit `telegram_send` calls may proactively send without a Telegram-originated request, only through this session's ready, verified assignment. File/photo tools remain request-bound.
 - Temporary credential files are excluded before writing and blocked from attachments, as are the actual configured global settings path and its temporary siblings.
 - Attachments are revalidated and checked against the opened file's identity before upload. Filename checks are defense in depth, not a general-purpose secret scanner for arbitrary documents or archives.
 
