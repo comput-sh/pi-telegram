@@ -11,11 +11,11 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## 0.4.0 release preparation — explicit draft streaming
+## Explicit draft streaming (released in 0.4.0)
 
 - `telegram_send` message + Working without buttons now creates a temporary Rich Message draft. Full accumulated text extending the active draft's exact prefix updates that draft; different text persists the old draft and starts another. Matching never applies to already-persisted messages.
 - Omitted status finalizes supplied text (or the pending draft for `{}`) and removes Working. Status-only Working retains the draft. Buttons always persist. Stop/disconnect/15-minute inactivity expiry discard pending state without publishing unfinished text; Telegram previews expire naturally.
-- Tool description, prompt guidelines, inbound notice, README and changelog explain the full-snapshot protocol explicitly. No automatic assistant streaming. Local validation: 106 tests passed and typecheck passed; live rendering remains pending. User authorized publication as 0.4.0; registry verification is pending. Installation is not part of this publication. Host npm was previously updated and verified as 0.3.0, and explicit Telegram sends have succeeded live; full draft-streaming verification remains pending.
+- Tool description, prompt guidelines, inbound notice, README and changelog explain the full-snapshot protocol explicitly. No automatic assistant streaming. Local validation: 106 tests passed and typecheck passed; live rendering remains pending. User authorized publication as 0.4.0; public npm latest and release provenance are verified below. Installation is not part of this publication. Host npm was previously updated and verified as 0.3.0, and explicit Telegram sends have succeeded live; full draft-streaming verification remains pending.
 
 ## Explicit asynchronous messaging (released in 0.3.0)
 
@@ -74,6 +74,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 - Photo/document uploads share request-bound routing, project-file safeguards, captions, and abort-aware upload transport. No conversion, fallback, or metadata stripping. Reload and live inline-photo smoke testing remain pending.
 
 ## Current handoff / release checkpoint
+
+- Source and public npm `latest`: **0.4.0**, released from `fff2a5251be0df4cd1a230a6d5960403518b9970`.
+- Trusted Publishing run **35472260405** succeeded. Registry metadata and SLSA attestation identify that commit and `.github/workflows/publish.yml`.
+- Tarball SHA-1: `516b460faa91dee81816aed396b3d7ee033a5159`; 23 files. **106 tests passed**, typecheck/pack/diff checks passed, zero audit vulnerabilities; CI validation succeeded.
+- Host npm was last updated and verified as **0.3.0**. This publication did not install or reload 0.4.0. Explicit 0.3.0 sends have succeeded live; 0.4.0 draft rendering/finalization and two-session smoke testing remain pending.
+- Keep `artifacts/` out of commits/packages. Do not republish 0.4.0.
+
+### Historical 0.3.0 checkpoint
 
 - Source and public npm `latest`: **0.3.0**, released from `fece2e438713147d068e4f143bcfe0c151b28bd1`.
 - Trusted Publishing run **35470512067** succeeded. Public registry and SLSA provenance were checked; the attestation identifies that commit and `.github/workflows/publish.yml`.
