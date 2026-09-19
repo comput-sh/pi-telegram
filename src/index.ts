@@ -223,15 +223,17 @@ export default function piTelegram(pi: ExtensionAPI): void {
       };
     },
   });
-  pi.registerTool({
-    name: "telegram_send_file",
-    label: "Send File to Telegram",
-    description:
-      "Send an explicitly requested safe project artifact to the Telegram owner during a Telegram-originated request. Maximum 50 MB; credentials and repository internals are blocked.",
-    promptSnippet:
-      "Send requested project artifacts as native Telegram documents",
+  for (const photo of [false, true]) pi.registerTool({
+    name: photo ? "telegram_send_photo" : "telegram_send_file",
+    label: photo ? "Send Photo to Telegram" : "Send File to Telegram",
+    description: photo
+      ? "Send an explicitly requested project PNG/JPEG as an inline Telegram photo during a Telegram-originated request. Maximum 10 MB, width + height <= 10000, aspect ratio <= 20:1; caption <= 1024 characters. Telegram may resize/compress it. No automatic conversion, document fallback, or metadata removal. Credentials and repository internals are blocked."
+      : "Send an explicitly requested safe project artifact to the Telegram owner during a Telegram-originated request. Maximum 50 MB; credentials and repository internals are blocked. Preserves original file bytes.",
+    promptSnippet: photo ? "Send requested PNG/JPEG images as inline Telegram photos" : "Send requested project artifacts as native Telegram documents",
     promptGuidelines: [
-      "Use telegram_send_file for requested downloadable project artifacts during Telegram requests, never for credentials, private settings, or ordinary text replies.",
+      photo
+        ? "Use telegram_send_photo for explicitly requested inline images during Telegram requests. Use telegram_send_file for original quality. Do not promise metadata removal or silently fall back to document delivery. Confirm sending only after tool success."
+        : "Use telegram_send_file for requested downloadable project artifacts or original-quality images during Telegram requests, never for credentials, private settings, or ordinary text replies.",
     ],
     parameters: Type.Object(
       {
@@ -249,7 +251,8 @@ export default function piTelegram(pi: ExtensionAPI): void {
       const file = await resolveTelegramProjectFile(ctx.cwd, params.path);
       if (responses.destination() !== target)
         throw new Error("Telegram request destination changed.");
-      await target.sendDocument(file, params.caption, signal);
+      if (photo) await target.sendPhoto(file, params.caption, signal);
+      else await target.sendDocument(file, params.caption, signal);
       return {
         content: [{ type: "text", text: `Sent ${file.fileName} to Telegram.` }],
         details: { status: "sent", fileName: file.fileName, size: file.size },

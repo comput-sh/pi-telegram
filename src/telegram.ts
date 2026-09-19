@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { validateTelegramPhoto } from "./photos.ts";
 
 import {
   TELEGRAM_DOCUMENT_LIMIT,
@@ -442,13 +443,31 @@ export class TelegramSessionConnection {
     );
   }
 
-  async sendDocument(
+  async sendPhoto(file: TelegramProjectFile, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.sendAttachment("photo", file, caption, signal);
+  }
+
+  async sendDocument(file: TelegramProjectFile, caption?: string, signal?: AbortSignal): Promise<void> {
+    await this.sendAttachment("document", file, caption, signal);
+  }
+
+  private async sendAttachment(
+    kind: "document" | "photo",
     file: TelegramProjectFile,
     caption?: string,
     externalSignal?: AbortSignal,
   ): Promise<void> {
+    const signal = AbortSignal.any([
+      this.controller.signal,
+      ...(externalSignal ? [externalSignal] : []),
+      AbortSignal.timeout(120_000),
+    ]);
+    signal.throwIfAborted();
     const normalizedCaption = validateDocumentCaption(caption);
     const bytes = await readTelegramProjectFile(file);
+    signal.throwIfAborted();
+    const contentType = kind === "photo" ? await validateTelegramPhoto(bytes) : file.contentType;
+    signal.throwIfAborted();
     if (bytes.byteLength > TELEGRAM_DOCUMENT_LIMIT) {
       throw new Error("Telegram documents must not exceed 50 MB.");
     }
@@ -456,24 +475,20 @@ export class TelegramSessionConnection {
     const form = new FormData();
     form.set("chat_id", String(this.ownerUserId));
     form.set(
-      "document",
-      new Blob([new Uint8Array(bytes)], { type: file.contentType }),
+      kind,
+      new Blob([new Uint8Array(bytes)], { type: contentType }),
       file.fileName,
     );
     if (normalizedCaption) form.set("caption", normalizedCaption);
 
-    const signal = AbortSignal.any([
-      this.controller.signal,
-      ...(externalSignal ? [externalSignal] : []),
-      AbortSignal.timeout(120_000),
-    ]);
+    const method = kind === "photo" ? "sendPhoto" : "sendDocument";
     const response = await fetch(
-      `https://api.telegram.org/bot${this.token}/sendDocument`,
+      `https://api.telegram.org/bot${this.token}/${method}`,
       { method: "POST", body: form, signal },
     ).catch(() => {
-      throw new Error("Telegram document upload failed.");
+      throw new Error(`Telegram ${kind} upload ${signal.aborted ? "cancelled or timed out" : "failed"}. Delivery is unconfirmed; check the chat before retrying.`);
     });
-    await this.readResponse<TelegramMessage>("sendDocument", response);
+    await this.readResponse<TelegramMessage>(method, response);
   }
 
   private scheduleDraftWrite(draft: ActiveDraft): void {

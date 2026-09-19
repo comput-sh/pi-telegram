@@ -11,6 +11,11 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## Unreleased local changes
+
+- Added separate `telegram_send_photo` for inline PNG/JPEG delivery with 10 MB, dimension-sum (10,000), and aspect-ratio (20:1) checks. `sharp` is a runtime dependency for actual image decoding/validation.
+- Photo/document uploads share request-bound routing, project-file safeguards, captions, and abort-aware upload transport. No conversion, fallback, or metadata stripping. Reload and live inline-photo smoke testing remain pending.
+
 ## Current handoff / release checkpoint
 
 Last verified against release commit `5e84564`:
@@ -74,7 +79,7 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 - `src/routing.ts`, `src/messages.ts` — transport notice, steering, public-text extraction.
 - `src/bot-api.ts` — identity validation, managed-bot APIs, owner pairing.
 - `src/telegram.ts` — polling, native commands, drafts, Rich Messages, uploads.
-- `src/files.ts`, `src/host.ts` — safe attachments and startup/status host information.
+- `src/files.ts`, `src/photos.ts`, `src/host.ts` — safe attachments, image validation, and startup/status host information.
 - `tests/` — unit and mocked lifecycle tests, including transfer races, rollback, offline release, cancellation, lease contention, and request-origin isolation.
 - `docs/architecture.md` — design and runtime flows.
 - `docs/telegram-rich-messages.md`, `docs/telegram-draft-ux-baseline.md` — API evaluation and tested draft UX.

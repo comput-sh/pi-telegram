@@ -6,9 +6,9 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.2.1** simplifies startup notifications to `Connected · ProjectName · IP`, retaining full details in `/status`. It includes the multi-bot and hardened lifecycle features introduced in 0.2.0. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.2.2** adds `telegram_send_photo` for inline PNG/JPEG delivery with image validation and shared upload safeguards. Startup notifications remain `Connected · ProjectName · IP`, retaining full details in `/status`. It includes the multi-bot and hardened lifecycle features introduced in 0.2.0. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
-The release passed TypeScript validation and 70 automated tests. Live two-session Telegram smoke testing of the new lifecycle remains pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
+The release passed TypeScript validation and 73 automated tests. Live two-session Telegram smoke testing and inline-photo delivery smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
 
 ## Install
 
@@ -148,7 +148,11 @@ Startup never removes a newly configured webhook: use `/telegram-start` to expli
 
 ## File attachments
 
-During a Telegram-originated request, ask Pi to send a generated or existing project file. The `telegram_send_file` tool uploads it as a native Telegram document.
+During a Telegram-originated request, ask Pi to send a generated or existing project file. The `telegram_send_file` tool uploads it as a native Telegram document, preserving the original bytes.
+
+`telegram_send_photo` is available for explicitly requested inline PNG/JPEG previews. Photos must be at most 10 MB, have width + height at most 10,000 pixels, and an aspect ratio at most 20:1. Actual image contents are decoded and validated before upload. Captions are optional plain text, up to 1,024 characters. Telegram may resize/compress photos; request document delivery for original quality. No automatic conversion, document fallback, or EXIF/GPS metadata removal is performed or promised.
+
+Both tools use the same project-file safeguards and request-bound destination. Cancellation and disconnect abort pending uploads; an interrupted network request may already have reached Telegram, so check the chat before retrying. Success is reported only after Telegram accepts the upload. Incoming files, albums, and automatic resizing are not supported.
 
 Safeguards include canonical paths restricted to the active project, blocked credential and repository-internal files (including configured global settings and temporary credential files), revalidation immediately before reading the attachment, Telegram's 50 MB cloud Bot API upload limit, and optional plain-text captions up to 1,024 characters.
 
