@@ -43,14 +43,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-Last verified against release commit `3e5f956`:
+Last verified against release commit `cb019e1`:
 
-- Local and GitHub source version: **0.2.2**.
-- npm `latest`: **0.2.2**, published and public-registry verified. Published tarball SHA-1: `10e13cc4e9c0bc5efa1d7b950a1d40b84d47cbe1`.
-- Startup now sends only `Connected · ProjectName · IP`; `/status` retains branch, hostname, and controls.
+- Local and GitHub source version: **0.2.3**.
+- npm `latest`: **0.2.3**, published and public-registry verified. Published tarball SHA-1: `7e4bc16850aca8fa8b22e97779b949cd7ba1b3be`.
+- Startup now sends `Connected · ProjectName · IP · vVersion`; `/status` retains branch, hostname, and controls.
 - `728a9f8` committed the multi-bot/session-assignment implementation and lifecycle hardening; `a227cbc` switched the publishing workflow to token-free authentication. Both are pushed to `origin/main`.
-- Last validation: TypeScript typecheck and **73 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 19 intended files. These are checkpoint results, not guarantees about future edits.
-- **Trusted Publishing is verified working.** Run `35436172232` published 0.2.2 from `3e5f956` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
+- Last validation: TypeScript typecheck and **91 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 22 intended files, including `CHANGELOG.md`. These are checkpoint results, not guarantees about future edits.
+- **Trusted Publishing is verified working.** Run `35443953354` published 0.2.3 from `cb019e1` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
 - Earlier OIDC authorization failures were resolved after the user saved the package-specific GitHub Trusted Publisher mapping. Enabling “Allow npm publish” alone was insufficient. The workflow retains filtered OIDC diagnostics.
 - Local `npm whoami` also returned `401`. Do not assume previously configured local npm credentials are valid.
 - Real Telegram two-session smoke testing of the new lifecycle remains pending. Automated lifecycle tests use mocked Pi contexts and Bot API responses.
@@ -60,8 +60,8 @@ Last verified against release commit `3e5f956`:
 1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
 3. Keep the verified Trusted Publisher mapping: GitHub owner `mbundgaard`, repository `PiTelegram`, workflow filename `publish.yml`, no GitHub environment name.
-4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, or 0.2.2. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
-5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.2 tarball includes photo delivery and updated README; this post-publication checkpoint update is documentation-only.
+4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, or 0.2.3. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
+5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.3 tarball includes incoming attachments, working-status fixes, setup completion shortcuts, update notifications and the changelog; this post-publication checkpoint update is documentation-only.
 
 Do not initialize Git, commit, push, tag, or publish without explicit user authorization for that operation. Documentation review alone is not authorization to publish.
 
