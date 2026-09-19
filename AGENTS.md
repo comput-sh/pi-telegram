@@ -11,12 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## Unreleased question buttons
+## Question buttons (released in 0.2.4)
 
 - Added `telegram_ask`: Rich Markdown question with 1–8 label/reply options, request-bound delivery, owner/chat/message/nonce validation and one-use callbacks routed as ordinary authenticated follow-ups.
 - One pending question per connection; 15-minute expiry, replacement, typed answer, stop and disconnect invalidate it. Keyboard removal is best-effort. No approval is implied by tool success; no local confirmation bypass.
 - Pre-release hardening rejects duplicate labels, fences slow sends against typed-answer/disconnect races, binds expiry timers to their question, and reports uncertain callback delivery without automatic replay or raw errors. Validation: 94 tests passed.
-- Reload and live Telegram question/button smoke testing remain pending. No release performed for this feature.
+- Reload and live Telegram question/button smoke testing remain pending. Published in 0.2.4 with live testing still pending.
 
 ## Incoming files (0.2.3)
 
@@ -50,14 +50,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-Last verified against release commit `cb019e1`:
+Last verified against release commit `dec412b`:
 
-- Local and GitHub source version: **0.2.3**.
-- npm `latest`: **0.2.3**, published and public-registry verified. Published tarball SHA-1: `7e4bc16850aca8fa8b22e97779b949cd7ba1b3be`.
+- Local and GitHub source version: **0.2.4**.
+- npm `latest`: **0.2.4**, published and public-registry verified. Published tarball SHA-1: `2f653526a222f2697ad866d3b4234c440df2060a`.
 - Startup now sends `Connected · ProjectName · IP · vVersion`; `/status` retains branch, hostname, and controls.
 - `728a9f8` committed the multi-bot/session-assignment implementation and lifecycle hardening; `a227cbc` switched the publishing workflow to token-free authentication. Both are pushed to `origin/main`.
-- Last validation: TypeScript typecheck and **91 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 22 intended files, including `CHANGELOG.md`. These are checkpoint results, not guarantees about future edits.
-- **Trusted Publishing is verified working.** Run `35443953354` published 0.2.3 from `cb019e1` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
+- Last validation: TypeScript typecheck and **94 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 22 intended files, including `CHANGELOG.md`. These are checkpoint results, not guarantees about future edits.
+- **Trusted Publishing is verified working.** Run `35462425907` published 0.2.4 from `dec412b` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
 - Earlier OIDC authorization failures were resolved after the user saved the package-specific GitHub Trusted Publisher mapping. Enabling “Allow npm publish” alone was insufficient. The workflow retains filtered OIDC diagnostics.
 - Local `npm whoami` also returned `401`. Do not assume previously configured local npm credentials are valid.
 - Real Telegram two-session smoke testing of the new lifecycle remains pending. Automated lifecycle tests use mocked Pi contexts and Bot API responses.
@@ -67,8 +67,8 @@ Last verified against release commit `cb019e1`:
 1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
 3. Keep the verified Trusted Publisher mapping: GitHub owner `mbundgaard`, repository `PiTelegram`, workflow filename `publish.yml`, no GitHub environment name.
-4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, or 0.2.3. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
-5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.3 tarball includes incoming attachments, working-status fixes, setup completion shortcuts, update notifications and the changelog; this post-publication checkpoint update is documentation-only.
+4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, 0.2.3, or 0.2.4. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
+5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.4 tarball additionally includes authenticated question buttons and updated release notes; this post-publication checkpoint update is documentation-only.
 
 Do not initialize Git, commit, push, tag, or publish without explicit user authorization for that operation. Documentation review alone is not authorization to publish.
 
