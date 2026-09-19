@@ -2,6 +2,14 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## 0.4.0
+
+**Delivery contract change:** messages with `status: working` and no buttons are now temporary drafts rather than immediately persisted messages. Agents must finalize by omitting status. Update and reload to activate; live client rendering remains pending.
+
+- Add explicit native draft streaming to `telegram_send`: full accumulated text with `status: working` updates the same active draft when the exact previous text is a prefix. Different text persists the previous draft and starts another; identical text avoids a duplicate write.
+- Omitted status finalizes the supplied text or pending draft and clears Working. Buttons always persist. Status-only Working preserves the draft; `{}` finalizes it. Stop/disconnect/inactivity expiry discard unfinished state without publishing it.
+- Describe these rules in the tool description, model guidelines, and inbound reply notice. No automatic assistant streaming or cross-message prefix matching. Live rendering and activation remain pending.
+
 ## 0.3.0
 
 **Breaking change:** agents must use `telegram_send` for Telegram replies and progress. `telegram_ask` is removed; ordinary assistant text is no longer forwarded. Update the npm installation and reload to activate. Live asynchronous messaging and reload smoke testing remain pending.

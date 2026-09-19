@@ -11,6 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## 0.4.0 release preparation — explicit draft streaming
+
+- `telegram_send` message + Working without buttons now creates a temporary Rich Message draft. Full accumulated text extending the active draft's exact prefix updates that draft; different text persists the old draft and starts another. Matching never applies to already-persisted messages.
+- Omitted status finalizes supplied text (or the pending draft for `{}`) and removes Working. Status-only Working retains the draft. Buttons always persist. Stop/disconnect/15-minute inactivity expiry discard pending state without publishing unfinished text; Telegram previews expire naturally.
+- Tool description, prompt guidelines, inbound notice, README and changelog explain the full-snapshot protocol explicitly. No automatic assistant streaming. Local validation: 106 tests passed and typecheck passed; live rendering remains pending. User authorized publication as 0.4.0; registry verification is pending. Installation is not part of this publication. Host npm was previously updated and verified as 0.3.0, and explicit Telegram sends have succeeded live; full draft-streaming verification remains pending.
+
 ## Explicit asynchronous messaging (released in 0.3.0)
 
 - `telegram_send` replaces `telegram_ask`: optional Rich Markdown `message`, optional `status: "working"`, optional label/reply `buttons` requiring a message. Omitted status removes Working; `{}` clears it. No Idle label. Tools return after delivery, never await a human answer.

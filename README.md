@@ -6,7 +6,7 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.3.0** introduces explicit asynchronous messaging through `telegram_send`, replacing `telegram_ask` and automatic reply streaming. Messages, Working status, and buttons are independently optional; omitting status clears Working. Proactive text sends no longer require an inbound Telegram request. Startup sends Connected before optional menu setup. Publication uses GitHub Actions Trusted Publishing with signed provenance; live activation and reload testing remain pending.
+**0.4.0** adds explicit draft streaming to `telegram_send`: Working messages become temporary previews, full-text prefix extensions update the same draft, and omitted status finalizes it. Buttons always persist. This changes the 0.3.0 delivery contract; agents must finalize their drafts. Proactive sends and independent inbound delivery remain supported. Publication uses GitHub Actions Trusted Publishing with signed provenance; live draft rendering and activation remain pending.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 
@@ -42,11 +42,25 @@ Version 0.3.0 replaces `telegram_ask` and automatic response streaming with `tel
 {"message":"Apply the changes?","buttons":[{"label":"Apply","reply":"Apply the proposed changes."}]}
 ```
 
-Status-only calls work; `{}` clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
+Status-only calls work; `{}` finalizes any pending draft and clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
 
 Only the paired owner can select an option. The selected question, label and reply re-enter the same connection's authenticated input path as a normal follow-up, never as a steering command. Sending the question does not grant approval or block the tool waiting for an answer.
 
 Only one question is active per connection. A new question, typed answer, stop, disconnect or 15-minute expiry invalidates it; keyboard removal is best-effort if Telegram is unreachable. Duplicate and stale clicks are rejected. You can always type an answer instead. Button labels must be distinct. Replies or disconnects during a slow question send prevent its buttons from becoming active afterward. If routing a selection fails, Telegram reports uncertain delivery without automatically retrying it. Buttons do not replace local setup/security confirmation dialogs. Live Rich Message/button testing remains pending after reload.
+
+## Explicit draft streaming (0.4.0)
+
+`telegram_send` uses the following rules starting in 0.4.0. Update the installed package and reload to activate them; 0.3.0 persists every supplied message instead.
+
+- `message` + `status: "working"`, without buttons: show a temporary native Rich Message draft. Send the **full accumulated text**, not deltas.
+- If text starts with the active draft's exact text, update the same draft; identical text does not rewrite it. Different text persists the old draft before starting another.
+- Omit status: persist the complete supplied answer and remove Working. An extended draft is finalized once; different text persists the old draft and then the new message.
+- `{}`: finalize the pending draft and clear Working. `{"status":"working"}`: maintain activity without finalizing.
+- Buttons always produce a persistent message, never a draft. If the button message extends the draft, only the complete button message is persisted.
+- Only the active draft on this connection participates in prefix matching—not earlier posted messages, Working notices, or other bots.
+- Stop, disconnect, and the 15-minute inactivity timeout discard pending draft state without publishing unfinished text. Telegram previews may linger until expiry. Failed delivery is uncertain and is not automatically replayed.
+
+Each preview update still requires an explicit tool call. This is not automatic token streaming. Live client rendering/finalization remains unverified.
 
 ## Update notifications
 

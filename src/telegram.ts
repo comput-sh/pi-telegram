@@ -275,6 +275,23 @@ export class TelegramSessionConnection {
   }
   private question?: { nonce: string; messageId: number; text: string; options: Array<{ label: string; reply: string }>; expires: number; timer: NodeJS.Timeout };
   private outboundWrites: Promise<void> = Promise.resolve();
+  private outboundDraft?: { id: number; text: string; heartbeat: number };
+
+  private async writeOutboundDraft(draft: NonNullable<typeof this.outboundDraft>, signal: AbortSignal): Promise<void> {
+    await this.call("sendRichMessageDraft", {
+      chat_id: this.ownerUserId, draft_id: draft.id,
+      rich_message: { markdown: draft.text + "\u200b".repeat(Math.min(32768 - draft.text.length, (draft.heartbeat++ % 3) + 1)) },
+      can_stop: false,
+    }, signal);
+  }
+
+  private async persistOutbound(text: string, signal: AbortSignal): Promise<void> {
+    // Retire before sending: an uncertain delivery must not be automatically
+    // replayed by a later status-only call or a new answer.
+    this.outboundDraft = undefined;
+    await this.call("sendRichMessage", { chat_id: this.ownerUserId, rich_message: { markdown: text } },
+      AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
+  }
   private workingStatus?: { id: number; heartbeat: NodeJS.Timeout; expiry: NodeJS.Timeout; tick: number };
 
   private queueOutbound(work: () => Promise<void>): Promise<void> {
@@ -304,13 +321,18 @@ export class TelegramSessionConnection {
     status.heartbeat = setInterval(() => {
       void this.queueOutbound(async () => {
         if (this.workingStatus !== status || this.stopping) return;
-        await this.call("editMessageText", { chat_id: this.ownerUserId, message_id: status.id, text: `Working${".".repeat((++status.tick % 3) + 1)}` }, AbortSignal.timeout(5_000));
+        const signal = AbortSignal.timeout(5_000);
+        if (this.outboundDraft) await this.writeOutboundDraft(this.outboundDraft, signal);
+        await this.call("editMessageText", { chat_id: this.ownerUserId, message_id: status.id, text: `Working${".".repeat((++status.tick % 3) + 1)}` }, signal);
       }).catch(() => this.reportDraftError());
     }, 5_000);
     status.expiry = setTimeout(() => {
       clearInterval(status.heartbeat);
       void this.queueOutbound(async () => {
-        if (this.workingStatus === status) await this.clearWorkingStatus();
+        if (this.workingStatus === status) {
+          this.outboundDraft = undefined; // Expiry is not permission to publish unfinished text.
+          await this.clearWorkingStatus();
+        }
       }).catch(() => this.reportDraftError());
     }, 15 * 60_000);
     status.heartbeat.unref?.(); status.expiry.unref?.();
@@ -334,9 +356,22 @@ export class TelegramSessionConnection {
       if (this.stopping) throw new Error("Telegram is disconnecting.");
       if (status === undefined || message !== undefined) await this.clearWorkingStatus();
       signal.throwIfAborted();
-      if (message !== undefined) {
-        if (buttons) await this.askQuestion(message, buttons, signal);
-        else await this.call("sendRichMessage", { chat_id: this.ownerUserId, rich_message: { markdown: message } }, AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
+      const previous = this.outboundDraft;
+      const extendsDraft = previous && message !== undefined && message.startsWith(previous.text);
+      if (previous && message !== undefined && !extendsDraft)
+        await this.persistOutbound(previous.text, signal);
+      signal.throwIfAborted();
+      if (buttons) {
+        this.outboundDraft = undefined;
+        await this.askQuestion(message!, buttons, signal);
+      } else if (message !== undefined && status === "working") {
+        const draft = { id: extendsDraft ? previous.id : randomInt(1, 2_147_483_647), text: message, heartbeat: extendsDraft ? previous.heartbeat : 0 };
+        if (!extendsDraft || message !== previous.text)
+          await this.writeOutboundDraft(draft, AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
+        signal.throwIfAborted();
+        this.outboundDraft = draft;
+      } else if (message !== undefined || (status === undefined && this.outboundDraft)) {
+        await this.persistOutbound(message ?? this.outboundDraft!.text, signal);
       }
       signal.throwIfAborted();
       if (status === "working") await this.showWorkingStatus(AbortSignal.any([signal, AbortSignal.timeout(20_000)]));
@@ -538,6 +573,7 @@ export class TelegramSessionConnection {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    this.outboundDraft = undefined;
     await this.clearWorkingStatus().catch(() => undefined);
     await this.expireQuestion();
     this.updateOffer = undefined;
@@ -545,6 +581,7 @@ export class TelegramSessionConnection {
     this.incoming?.controller.abort();
     await this.incoming?.task.catch(() => undefined);
     await this.outboundWrites;
+    this.outboundDraft = undefined;
     if (this.workingStatus) { clearInterval(this.workingStatus.heartbeat); clearTimeout(this.workingStatus.expiry); this.workingStatus = undefined; }
     await this.cancelRichDraft();
     await this.polling?.catch(() => undefined);
@@ -866,7 +903,10 @@ export class TelegramSessionConnection {
             continue;
           }
           if (commandName === "stop" || text.toLowerCase() === "stop") {
-            await this.queueOutbound(() => this.clearWorkingStatus()).catch(() => undefined);
+            await this.queueOutbound(async () => {
+              this.outboundDraft = undefined;
+              await this.clearWorkingStatus();
+            }).catch(() => undefined);
             await this.expireQuestion();
             if (this.incoming) {
               this.incoming.controller.abort();
