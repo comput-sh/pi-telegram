@@ -11,21 +11,21 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## Unreleased local changes
+## Photo delivery (released in 0.2.2)
 
 - Added separate `telegram_send_photo` for inline PNG/JPEG delivery with 10 MB, dimension-sum (10,000), and aspect-ratio (20:1) checks. `sharp` is a runtime dependency for actual image decoding/validation.
 - Photo/document uploads share request-bound routing, project-file safeguards, captions, and abort-aware upload transport. No conversion, fallback, or metadata stripping. Reload and live inline-photo smoke testing remain pending.
 
 ## Current handoff / release checkpoint
 
-Last verified against release commit `5e84564`:
+Last verified against release commit `3e5f956`:
 
-- Local and GitHub source version: **0.2.1**.
-- npm `latest`: **0.2.1**, published and public-registry verified. Published tarball SHA-1: `798c6e738c1ea3516679f14e883159386cec53cb`.
+- Local and GitHub source version: **0.2.2**.
+- npm `latest`: **0.2.2**, published and public-registry verified. Published tarball SHA-1: `10e13cc4e9c0bc5efa1d7b950a1d40b84d47cbe1`.
 - Startup now sends only `Connected · ProjectName · IP`; `/status` retains branch, hostname, and controls.
 - `728a9f8` committed the multi-bot/session-assignment implementation and lifecycle hardening; `a227cbc` switched the publishing workflow to token-free authentication. Both are pushed to `origin/main`.
-- Last validation: TypeScript typecheck and **70 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 18 intended files. These are checkpoint results, not guarantees about future edits.
-- **Trusted Publishing is verified working.** Run `35433746611` published 0.2.1 from `5e84564` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
+- Last validation: TypeScript typecheck and **73 tests passed**. `npm audit` reported zero vulnerabilities; npm pack inspection contained 19 intended files. These are checkpoint results, not guarantees about future edits.
+- **Trusted Publishing is verified working.** Run `35436172232` published 0.2.2 from `3e5f956` through GitHub OIDC with signed SLSA provenance; the registry attestation identifies that exact commit and workflow. Public registry visibility lagged workflow success by a few minutes; verify the registry rather than immediately retrying publication.
 - Earlier OIDC authorization failures were resolved after the user saved the package-specific GitHub Trusted Publisher mapping. Enabling “Allow npm publish” alone was insufficient. The workflow retains filtered OIDC diagnostics.
 - Local `npm whoami` also returned `401`. Do not assume previously configured local npm credentials are valid.
 - Real Telegram two-session smoke testing of the new lifecycle remains pending. Automated lifecycle tests use mocked Pi contexts and Bot API responses.
@@ -35,8 +35,8 @@ Last verified against release commit `5e84564`:
 1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
 3. Keep the verified Trusted Publisher mapping: GitHub owner `mbundgaard`, repository `PiTelegram`, workflow filename `publish.yml`, no GitHub environment name.
-4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0 or 0.2.1. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
-5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.1 tarball includes the startup change and updated README; this post-publication checkpoint update is documentation-only.
+4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, or 0.2.2. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
+5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.2 tarball includes photo delivery and updated README; this post-publication checkpoint update is documentation-only.
 
 Do not initialize Git, commit, push, tag, or publish without explicit user authorization for that operation. Documentation review alone is not authorization to publish.
 
