@@ -6,7 +6,7 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.4.0** adds explicit draft streaming to `telegram_send`: Working messages become temporary previews, full-text prefix extensions update the same draft, and omitted status finalizes it. Buttons always persist. This changes the 0.3.0 delivery contract; agents must finalize their drafts. Proactive sends and independent inbound delivery remain supported. Publication uses GitHub Actions Trusted Publishing with signed provenance; live draft rendering and activation remain pending.
+**0.4.1** switches streaming previews to plain `sendMessageDraft` to avoid slow Rich Draft animation observed on mobile. Full-text prefix matching and Rich Markdown final delivery are unchanged. Previews are capped at 4,096 characters; full answers are retained. An isolated plain-draft test was visually confirmed; integrated activation and live verification remain pending. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 
@@ -48,11 +48,15 @@ Only the paired owner can select an option. The selected question, label and rep
 
 Only one question is active per connection. A new question, typed answer, stop, disconnect or 15-minute expiry invalidates it; keyboard removal is best-effort if Telegram is unreachable. Duplicate and stale clicks are rejected. You can always type an answer instead. Button labels must be distinct. Replies or disconnects during a slow question send prevent its buttons from becoming active afterward. If routing a selection fails, Telegram reports uncertain delivery without automatically retrying it. Buttons do not replace local setup/security confirmation dialogs. Live Rich Message/button testing remains pending after reload.
 
+## Preview-rendering fix (0.4.1)
+
+Version 0.4.1 uses plain `sendMessageDraft` previews instead of Rich Drafts. Preview text is capped at 4,096 characters with a visible truncation marker; full input is retained for prefix matching and Rich Markdown final delivery. Continue sending full accumulated snapshots. A controlled plain-draft test was visually confirmed by the user after Rich Drafts showed only a few characters; the integrated change still needs installation/reload and live verification. Update and reload to activate this fix.
+
 ## Explicit draft streaming (0.4.0)
 
 `telegram_send` uses the following rules starting in 0.4.0. Update the installed package and reload to activate them; 0.3.0 persists every supplied message instead.
 
-- `message` + `status: "working"`, without buttons: show a temporary native Rich Message draft. Send the **full accumulated text**, not deltas.
+- `message` + `status: "working"`, without buttons: show a temporary native draft (plain-text preview from 0.4.1; Rich Draft in 0.4.0). Send the **full accumulated text**, not deltas.
 - If text starts with the active draft's exact text, update the same draft; identical text does not rewrite it. Different text persists the old draft before starting another.
 - Omit status: persist the complete supplied answer and remove Working. An extended draft is finalized once; different text persists the old draft and then the new message.
 - `{}`: finalize the pending draft and clear Working. `{"status":"working"}`: maintain activity without finalizing.

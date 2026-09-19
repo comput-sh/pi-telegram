@@ -18,15 +18,17 @@ test("prefix snapshots share a draft; omission finalizes the full answer, not ea
   await connection.sendOutbound("Hello", "working");
   await connection.sendOutbound("Hello there", "working");
   await connection.sendOutbound("Hello there", "working");
-  const drafts = calls.filter(c => c.method === "sendRichMessageDraft");
+  const drafts = calls.filter(c => c.method === "sendMessageDraft");
   assert.equal(drafts.length, 2);
+  assert.deepEqual(drafts.map(c => c.body.text.replace(/\u200b+$/, "")), ["Hello", "Hello there"]);
+  assert.ok(!calls.some(c => c.method === "sendRichMessageDraft"));
   assert.equal(drafts[0].body.draft_id, drafts[1].body.draft_id);
   assert.equal(calls.filter(c => c.method === "sendRichMessage").length, 0);
   await connection.sendOutbound("Hello there! Final.");
   assert.deepEqual(calls.filter(c => c.method === "sendRichMessage").map(c => c.body.rich_message.markdown), ["Hello there! Final."]);
   assert.equal((connection as any).outboundDraft, undefined);
   await connection.sendOutbound("Hello there! Final. Another answer", "working");
-  assert.notEqual(calls.filter(c => c.method === "sendRichMessageDraft").at(-1)!.body.draft_id, drafts[0].body.draft_id);
+  assert.notEqual(calls.filter(c => c.method === "sendMessageDraft").at(-1)!.body.draft_id, drafts[0].body.draft_id);
 }));
 
 test("different text persists the previous draft; status-only working retains it and empty call finalizes", async () => fixture(async (connection, calls) => {
@@ -34,7 +36,7 @@ test("different text persists the previous draft; status-only working retains it
   await connection.sendOutbound(undefined, "working");
   assert.equal(calls.filter(c => c.method === "sendRichMessage").length, 0);
   await connection.sendOutbound("Second", "working");
-  const drafts = calls.filter(c => c.method === "sendRichMessageDraft");
+  const drafts = calls.filter(c => c.method === "sendMessageDraft");
   assert.notEqual(drafts[0].body.draft_id, drafts[1].body.draft_id);
   await connection.sendOutbound();
   await connection.sendOutbound();
@@ -52,6 +54,23 @@ test("buttons persist an extended draft exactly once; shutdown never publishes p
   await connection.stop();
   assert.equal((connection as any).outboundDraft, undefined);
   assert.equal(calls.filter(c => c.method === "sendRichMessage").length, 1);
+}));
+
+test("plain previews are bounded without truncating prefix state or Rich Markdown finals", async () => fixture(async (connection, calls) => {
+  const text = "**Heading**\n" + "😀".repeat(2200);
+  await connection.sendOutbound(text, "working");
+  await connection.sendOutbound(text + "\nMore", "working");
+  const drafts = calls.filter(c => c.method === "sendMessageDraft");
+  assert.equal(drafts.length, 2);
+  assert.equal(drafts[0].body.draft_id, drafts[1].body.draft_id);
+  for (const draft of drafts) {
+    assert.ok(draft.body.text.length <= 4096);
+    assert.ok(draft.body.text.includes("[Preview truncated]"));
+    assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(draft.body.text));
+    assert.equal(draft.body.rich_message, undefined);
+  }
+  await connection.sendOutbound();
+  assert.deepEqual(calls.filter(c => c.method === "sendRichMessage").map(c => c.body.rich_message.markdown), [text + "\nMore"]);
 }));
 
 test("uncertain final delivery is not replayed by a later empty call", async () => fixture(async (connection, calls) => {

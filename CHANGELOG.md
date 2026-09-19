@@ -2,6 +2,12 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## 0.4.1
+
+- Use plain `sendMessageDraft` previews to avoid the slow Rich Draft animation observed on mobile. Keep explicit full-snapshot prefix matching and Rich Markdown final delivery unchanged.
+- Cap only preview text at 4,096 characters, visibly mark truncation, and avoid splitting surrogate pairs. Retain full input for matching and finalization; explain the distinction in the tool description.
+- The user confirmed an isolated plain-draft test rendered correctly. Integrated live verification remains pending; no installed-package change.
+
 ## 0.4.0
 
 **Delivery contract change:** messages with `status: working` and no buttons are now temporary drafts rather than immediately persisted messages. Agents must finalize by omitting status. Update and reload to activate; live client rendering remains pending.

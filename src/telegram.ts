@@ -278,10 +278,15 @@ export class TelegramSessionConnection {
   private outboundDraft?: { id: number; text: string; heartbeat: number };
 
   private async writeOutboundDraft(draft: NonNullable<typeof this.outboundDraft>, signal: AbortSignal): Promise<void> {
-    await this.call("sendRichMessageDraft", {
+    // Rich drafts animate too slowly on tested mobile clients. Keep the full
+    // snapshot for prefix matching/finalization; bound only the plain preview.
+    const suffix = "\n\n[Preview truncated]";
+    const budget = 4096 - 3; // Reserve room for the changing heartbeat marker.
+    const text = draft.text.length <= budget ? draft.text
+      : draft.text.slice(0, budget - suffix.length).replace(/[\uD800-\uDBFF]$/, "") + suffix;
+    await this.call("sendMessageDraft", {
       chat_id: this.ownerUserId, draft_id: draft.id,
-      rich_message: { markdown: draft.text + "\u200b".repeat(Math.min(32768 - draft.text.length, (draft.heartbeat++ % 3) + 1)) },
-      can_stop: false,
+      text: text + "\u200b".repeat((draft.heartbeat++ % 3) + 1),
     }, signal);
   }
 

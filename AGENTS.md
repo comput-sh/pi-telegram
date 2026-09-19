@@ -11,6 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## 0.4.1 release preparation — plain-preview rendering fix
+
+- User reported 0.4.0 Rich Draft tests showed only “TE” twice before final persistence. An isolated plain `sendMessageDraft` test was visually confirmed as good. This supports the transport change but does not isolate heartbeat effects or verify integrated behavior.
+- Local source now uses plain previews, bounded to 4,096 characters with marked, surrogate-safe truncation. Full snapshots remain intact for prefix matching and Rich Markdown final persistence. Tool description clarifies preview limits versus input limits.
+- Host 0.4.0 was installed and reload was followed by live test messages. User authorized publication as 0.4.1. Publication verification is pending; installation is separate and integrated smoke testing remains pending.
+
 ## Explicit draft streaming (released in 0.4.0)
 
 - `telegram_send` message + Working without buttons now creates a temporary Rich Message draft. Full accumulated text extending the active draft's exact prefix updates that draft; different text persists the old draft and starts another. Matching never applies to already-persisted messages.
