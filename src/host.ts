@@ -56,7 +56,7 @@ function formatSessionMessage(
 export function formatSessionStartupMessage(
   details: SessionStartupDetails,
 ): string {
-  return formatSessionMessage("New Pi session connected", details);
+  return `Connected · ${details.projectName} · ${details.ip}`;
 }
 
 export function formatSessionStatusMessage(

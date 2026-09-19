@@ -1,8 +1,14 @@
 # Pi Telegram
 
-Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/badlogic/pi-mono) sessions.
+Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/earendil-works/pi-mono) sessions.
 
 Pi Telegram supports multiple project bots, persistent Pi-session assignments, owner-only input, explicit follow-up and steering semantics, native activity drafts, concise public progress, Rich Markdown final answers, cancellation, command menus, and project-file attachments.
+
+## Release status
+
+**0.2.1** simplifies startup notifications to `Connected · ProjectName · IP`, retaining full details in `/status`. It includes the multi-bot and hardened lifecycle features introduced in 0.2.0. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+
+The release passed TypeScript validation and 70 automated tests. Live two-session Telegram smoke testing of the new lifecycle remains pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
 
 ## Install
 
@@ -16,7 +22,7 @@ Alternatively, install the current source directly from GitHub:
 pi install git:github.com/mbundgaard/PiTelegram
 ```
 
-Start a new Pi session or run `/reload` after installation. Installation is global, but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session.
+Start a new Pi session or run `/reload` after installation. Installation is global but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session. Interactive setup requires Pi's local terminal UI; masked token setup is not available through RPC or non-interactive modes.
 
 ## Start Telegram
 
@@ -34,7 +40,7 @@ Or explicitly ask the agent to start Telegram; the `telegram_start` tool opens t
 
 Transfers require confirmation. If assignments change while a dialog is open, setup stops and asks you to start again with the current state. Escape cancels each setup step, including the display-name prompt and private pairing.
 
-One Pi session can run one bot. One bot can belong to one persistent Pi session. The assignment uses `ctx.sessionManager.getSessionId()`, so resuming that Pi session reconnects its bot while other sessions remain inactive.
+Within a project, one Pi session can be assigned one bot, and each bot entry has one persistent session assignment. Host-local runtime leases also prevent two local processes from polling the same bot. Assignments in separate project files or on different machines are not globally synchronized; release the old integration before moving a bot between projects or hosts. The assignment uses `ctx.sessionManager.getSessionId()`, so resuming that Pi session reconnects its bot while other sessions remain inactive.
 
 Use `/telegram-release` or ask the agent to release Telegram to stop polling and clear only the current session assignment. Credentials remain available for later selection. Use `/telegram-remove-bot` only when you also want to delete a selected bot's locally stored project credentials; it does not revoke or delete the Telegram bot.
 
@@ -50,6 +56,8 @@ The manager configuration is stored globally:
 ~/.pi/agent/pi-telegram/settings.json
 ```
 
+`PI_TELEGRAM_SETTINGS` can override this global settings path.
+
 Choose the exact username for each new managed bot. Pi Telegram never derives, hashes, truncates, prefixes, or otherwise chooses usernames from project names. Telegram requires the owner to approve the generated managed-bot creation link. Start Telegram again after approval to complete setup.
 
 The global manager settings maintain a best-effort catalog of managed bot IDs, usernames, and owner IDs observed in Telegram updates. Child tokens are never stored in that catalog. Telegram has no API for listing every managed bot or resolving an arbitrary private bot username; token retrieval requires a numeric bot ID. If a bot is missing from the catalog but you know its ID and exact username, the recovery flow retrieves and validates its token, restricts access, and performs private owner pairing.
@@ -58,7 +66,7 @@ The global manager settings maintain a best-effort catalog of managed bot IDs, u
 
 Choose **Add a bot… → Add BotFather bot** or run `/telegram-setup-bot`. Enter the exact username and BotFather token in local UI. Pi Telegram validates the token with `getMe`, confirms that local polling may remove an existing webhook, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
 
-A regular BotFather bot can be restored after reinstall by adding its username and token again. Tokens are never accepted through model tool arguments or chat.
+A regular BotFather bot can be restored after reinstall by adding its username and token again. Re-adding an already paired bot in the same project preserves its stored owner instead of pairing again; to change the owner, explicitly remove the local bot entry and add it again. Tokens are never accepted through model tool arguments or chat.
 
 ### Commands
 
@@ -121,13 +129,14 @@ Startup never removes a newly configured webhook: use `/telegram-start` to expli
 | `!message` | Steers active work |
 | `!!message` | Sends a literal leading `!` |
 | `stop` or `/stop` | Cancels the current Telegram task |
-| `/status` | Shows the connected project/session |
+| `/status` | Shows project, branch when available, hostname/IP, and controls |
+| `/steer message` | Same steering behavior as `!message` |
 | `/reload` | Reloads Pi while idle |
 | `/help` | Shows Pi Telegram controls |
 
 ## Responses
 
-- Telegram immediately shows a native Rich Thinking or tool-activity draft.
+- When Pi starts processing a Telegram request, Telegram shows a native Rich Thinking or tool-activity draft. Queued follow-ups do not start their own draft until processed.
 - The first public commentary replaces that draft with one evolving plain progress line.
 - Tool activity never switches back to generic Thinking after public progress appears.
 - Only public commentary and final-answer text are streamed; hidden reasoning and raw tool traffic stay private.
@@ -146,8 +155,10 @@ Safeguards include canonical paths restricted to the active project, blocked cre
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run validate
+npm audit --audit-level=moderate
+npm run pack:check
 ```
 
 Run from source:
@@ -161,6 +172,8 @@ See [`docs/architecture.md`](docs/architecture.md) and [`docs/telegram-rich-mess
 ## Security
 
 Pi packages run with full system access. Review source before installation. Pi Telegram accepts only private text from the paired owner and never sends hidden reasoning or raw tool results to Telegram.
+
+Credential files contain plaintext tokens, not encrypted secrets. Protect them with appropriate OS permissions and secure backups. Bot chats are not end-to-end encrypted; public responses and requested attachments pass through Telegram. Startup messages use a single line: `Connected · ProjectName · IP`. They disclose the project name and an IP address to the paired owner; `/status` additionally includes the branch when available, hostname, and controls. Attachment path/filename checks are not a content-level secret scanner.
 
 Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
 

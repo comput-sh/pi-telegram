@@ -6,7 +6,7 @@ import {
   formatSessionStatusMessage,
 } from "../src/host.ts";
 
-test("formatSessionStartupMessage includes project, branch, host, and controls", () => {
+test("formatSessionStartupMessage shows only connection, project, and IP on one line", () => {
   assert.equal(
     formatSessionStartupMessage({
       projectName: "SampleProject",
@@ -14,17 +14,7 @@ test("formatSessionStartupMessage includes project, branch, host, and controls",
       hostname: "workstation",
       ip: "192.168.1.20",
     }),
-    [
-      "New Pi session connected",
-      "Project: SampleProject",
-      "Branch: feature/telegram",
-      "Host: workstation (192.168.1.20)",
-      "",
-      "Normal messages: follow-up",
-      "Prefix !: steer active work",
-      "Prefix !!: send a literal leading !",
-      "Send stop: cancel the current Telegram task",
-    ].join("\n"),
+    "Connected · SampleProject · 192.168.1.20",
   );
 });
 
@@ -37,13 +27,18 @@ test("formatSessionStatusMessage uses the status heading", () => {
   });
   assert.match(message, /^Pi Telegram session status$/m);
   assert.match(message, /^Branch: main$/m);
+  assert.match(message, /^Host: workstation \(192\.168\.1\.20\)$/m);
+  assert.match(message, /^Normal messages: follow-up$/m);
+  assert.match(message, /^Prefix !: steer active work$/m);
+  assert.match(message, /^Prefix !!: send a literal leading !$/m);
+  assert.match(message, /^Send stop: cancel the current Telegram task$/m);
 });
 
-test("formatSessionStartupMessage omits branch outside a repository", () => {
+test("formatSessionStartupMessage handles unavailable branch and IP", () => {
   const message = formatSessionStartupMessage({
     projectName: "LooseFiles",
     hostname: "workstation",
     ip: "unknown",
   });
-  assert.doesNotMatch(message, /^Branch:/m);
+  assert.equal(message, "Connected · LooseFiles · unknown");
 });
