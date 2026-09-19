@@ -11,6 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## Local unreleased reliability/streaming work
+
+- Checkpoint `87ee97b` commits reconnect recovery before streaming changes; it is not published. Startup retries assigned-session failures with bounded attempts/backoff and treats connection-notice failure as a failed connection. Retries stop on shutdown and recheck assignment.
+- Subsequent local streaming changes remove the phase-metadata gate: authenticated public text streams on text deltas, retaining multiline formatting and replacing the current preview. Thinking/tool data stays private. First public text writes immediately, later writes remain coalesced; generic status remains during tools/pauses.
+- Validation: 98 tests passed. Live reload/update and streaming verification remain pending. The active installation is from npm; local changes do not activate with `/reload` alone until installed/published.
+
 ## Question buttons (released in 0.2.4)
 
 - Added `telegram_ask`: Rich Markdown question with 1–8 label/reply options, request-bound delivery, owner/chat/message/nonce validation and one-use callbacks routed as ordinary authenticated follow-ups.

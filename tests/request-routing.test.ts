@@ -110,6 +110,37 @@ test("activity survives completed messages and overlapping tools until settlemen
   assert.equal(active, false);
 });
 
+test("public deltas stream without phase metadata, replace previous messages and exclude private blocks", async () => {
+  const handlers = new Map<string, Function>();
+  const previews: string[] = [];
+  const target = {
+    beginRichDraft: async () => {}, cancelRichDraft: async () => {}, setDraftActivity: async () => {},
+    streamRichDraft: async (text: string) => { previews.push(text); },
+  } as unknown as TelegramSessionConnection;
+  const responses = registerResponseRouting({ on: (name: string, handler: Function) => handlers.set(name, handler) } as unknown as ExtensionAPI, () => target);
+  const ctx = { ui: { notify: () => {} } };
+  const emit = async (name: string, event: any) => handlers.get(name)?.(event, ctx);
+  const delta = (text: string) => ({ message: { role: "assistant", content: [
+    { type: "thinking", thinking: "private reasoning" }, { type: "toolCall", name: "bash", arguments: { secret: "private argument" } }, { type: "text", text },
+  ] }, assistantMessageEvent: { type: "text_delta" } });
+  await emit("message_update", delta("console-only"));
+  assert.equal(previews.length, 0);
+  const text = responses.origins.enqueue("hello", target);
+  await emit("input", { text, source: "extension" });
+  await emit("message_start", { message: { role: "user", content: text } });
+  await emit("message_start", { message: { role: "assistant" } });
+  await emit("message_update", delta("First"));
+  assert.deepEqual(previews, ["First"], "must stream before message_end without phase metadata");
+  await emit("message_update", delta("First\n\n```ts\nconst x = 1;\n```"));
+  await emit("message_start", { message: { role: "assistant" } });
+  await emit("message_update", delta("Second"));
+  assert.equal(previews.at(-1), "Second");
+  await emit("message_update", { ...delta("do not forward"), assistantMessageEvent: { type: "thinking_delta" } });
+  assert.equal(previews.at(-1), "Second");
+  assert.ok(!previews.join("").includes("private"));
+  await emit("agent_settled", {});
+});
+
 test("multiple completed responses deliver separately with no settled duplicate", async () => {
   const handlers = new Map<string, Function>();
   const pi = {

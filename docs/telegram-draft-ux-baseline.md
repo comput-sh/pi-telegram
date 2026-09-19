@@ -67,10 +67,10 @@ This sequence was visually approved in a controlled mobile test, but real-sessio
 
 1. Create one native Rich Thinking/activity draft when Telegram input starts.
 2. Allow generic tool activity to update it only until public commentary exists.
-3. On the first public `commentary` delta, replace the same stable draft ID with a plain `sendMessageDraft` containing a whitespace-flattened one-line progress update.
-4. Coalesce further commentary at 1.5 seconds and replace the same line as it evolves. Never switch back to generic activity after progress is visible.
+3. On the first public text delta, immediately replace the same stable draft ID with a plain `sendMessageDraft`. Do not wait for phase metadata. Preserve multiline and code formatting; exclude thinking/tool blocks.
+4. Coalesce further public text at 1.5 seconds. Each delta uses the current assistant message's accumulated text, replacing—not appending to—the previous message's preview. Retain previous text through text-free thinking/tool activity until new public text arrives.
 5. Use a visibly changing five-second heartbeat. Plain drafts preserve public progress and append a generic activity label; tool events update that label without replacing commentary. Visibility on current mobile clients still requires live verification.
-6. When `final_answer` begins, replace the same draft with the streamed final text.
+6. Final-answer text follows the same public-text streaming path; no provider-specific phase label is required.
 7. Persist each completed response as a normal Rich Markdown message, then restore request activity until `agent_settled` so automatic compaction/retry is not silent. Assistant starts also ensure an authenticated request has a draft.
 8. Track concurrent tools by call ID; ending one tool does not reset activity while another remains active.
 9. Acknowledge busy follow-ups with a separate Queued message, without replacing the current task's draft. No draft is started for queued work until its user-message lifecycle begins.

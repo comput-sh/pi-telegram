@@ -509,19 +509,23 @@ export class TelegramSessionConnection {
     const draft = this.activeDraft;
     if (!draft) return;
     validateRichMarkdown(markdown);
+    const firstPublicText = !draft.plain;
     draft.streamingText = markdown;
     draft.activity = "responding";
     draft.plain = true;
-    this.scheduleDraftWrite(draft);
+    if (firstPublicText) {
+      if (draft.streamTimer) clearTimeout(draft.streamTimer);
+      draft.streamTimer = undefined;
+      await this.writeDraft(draft);
+    } else this.scheduleDraftWrite(draft);
   }
 
   async updateRichDraft(markdown: string): Promise<void> {
     const draft = this.activeDraft;
     if (!draft) return;
     validateRichMarkdown(markdown);
-    const text = renderProgressLine(markdown);
-    if (!text) return;
-    draft.streamingText = text;
+    if (!markdown.trim()) return;
+    draft.streamingText = markdown;
     draft.activity = "responding";
     draft.plain = true;
     if (draft.streamTimer) clearTimeout(draft.streamTimer);

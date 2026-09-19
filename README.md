@@ -6,7 +6,7 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.2.4** adds `telegram_ask`: Rich Markdown questions with custom inline choice buttons and authenticated follow-up answers. It includes the incoming documents/photos, working-status fixes, setup shortcuts and update notifications introduced in 0.2.3. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.2.5** adds automatic assigned-session startup retries and streams public assistant text without waiting for phase metadata. Multiline previews retain a visible activity indicator during tools and pauses. Live reload/update and streaming verification remain pending. The release retains `telegram_ask` question buttons from 0.2.4. It includes the incoming documents/photos, working-status fixes, setup shortcuts and update notifications introduced in 0.2.3. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 

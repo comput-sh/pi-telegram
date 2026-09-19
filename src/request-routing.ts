@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   extractPublicAssistantText,
-  getPublicTextPhase,
   type AssistantMessageLike,
 } from "./messages.ts";
 import { wrapTelegramInput } from "./routing.ts";
@@ -78,7 +77,15 @@ export function registerResponseRouting(
   });
   pi.on("message_start", async (event, ctx) => {
     if (event.message.role === "assistant") {
-      try { await destination()?.beginRichDraft(); }
+      try {
+        const target = destination();
+        if (target) {
+          latest = undefined;
+          delivered = false;
+          await target.beginRichDraft();
+          await target.setDraftActivity([...activeTools.values()].at(-1));
+        }
+      }
       catch { ctx.ui.notify("Telegram activity draft failed.", "warning"); }
       return;
     }
@@ -122,10 +129,9 @@ export function registerResponseRouting(
     const text = extractPublicAssistantText(event.message);
     if (!text) return;
     try {
-      if (getPublicTextPhase(event.message) === "commentary")
-        await target.streamCommentaryDraft(text);
-      else if (getPublicTextPhase(event.message) === "final_answer")
-        await target.streamRichDraft(text);
+      // Pi text blocks are public; thinking/tool blocks are filtered above.
+      // Replace with this message's accumulated text, regardless of provider phase.
+      await target.streamRichDraft(text);
     } catch {
       ctx.ui.notify("Telegram draft streaming failed.", "warning");
     }
