@@ -11,12 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## 0.3.0 release preparation — explicit asynchronous messaging
+## Explicit asynchronous messaging (released in 0.3.0)
 
 - `telegram_send` replaces `telegram_ask`: optional Rich Markdown `message`, optional `status: "working"`, optional label/reply `buttons` requiring a message. Omitted status removes Working; `{}` clears it. No Idle label. Tools return after delivery, never await a human answer.
 - Explicit text/status sends can originate in console/scheduled work, but require this session's ready, verified assignment. Inbound provenance remains for steering, Stop, files and stale-connection protection. Queued receipts retired at disconnect must not route to replacement bots.
 - Automatic assistant commentary/final streaming and tool/Thinking lifecycle mirroring are removed. Working uses a separate removable message with heartbeat and 15-minute expiry. Stop/disconnect cleanup is best-effort; command/queue/update/attachment notices remain automatic.
-- File/photo safeguards remain request-bound. User authorized 0.3.0 publication. Release validation: 102 tests passed, typecheck/pack/diff checks passed, zero audit vulnerabilities; 23 intended package files. Publication verification and live activation are pending; installed npm remains 0.2.5 until explicitly updated.
+- File/photo safeguards remain request-bound. User authorized 0.3.0 publication. Release validation: 102 tests passed, typecheck/pack/diff checks passed, zero audit vulnerabilities; 23 intended package files. Publication is verified below; live activation remains pending. Installed npm remains 0.2.5 until explicitly updated.
 
 ## Connection-notice fix included in 0.3.0
 
@@ -68,6 +68,14 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 - Photo/document uploads share request-bound routing, project-file safeguards, captions, and abort-aware upload transport. No conversion, fallback, or metadata stripping. Reload and live inline-photo smoke testing remain pending.
 
 ## Current handoff / release checkpoint
+
+- Source and public npm `latest`: **0.3.0**, released from `fece2e438713147d068e4f143bcfe0c151b28bd1`.
+- Trusted Publishing run **35470512067** succeeded. Public registry and SLSA provenance were checked; the attestation identifies that commit and `.github/workflows/publish.yml`.
+- Tarball SHA-1: `fc0288ab2d7e3feb12d8585363335d9b76e82dae`; 23 files. Local typecheck and **102 tests passed**, zero audit vulnerabilities; pack and diff checks passed. CI validation also succeeded.
+- Installed npm on this host remains **0.2.5**. Update and `/reload` are required; neither installation nor live verification was performed during this publication.
+- Real Telegram async-send, status-removal, reload and two-session smoke tests remain pending. Keep `artifacts/` out of commits/packages. Do not republish 0.3.0.
+
+### Historical 0.2.5 checkpoint
 
 Last verified against release commit `0bfe2ae`:
 
