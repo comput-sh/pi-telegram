@@ -2,6 +2,15 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## 0.2.4
+
+- Add `telegram_ask` for Rich Markdown questions with 1–8 custom inline choice buttons.
+- Route owner-selected answers as authenticated follow-ups to the originating connection. Sending a question is not approval.
+- Reject wrong-owner/chat/message, stale and duplicate callbacks. Questions expire after 15 minutes, replacement, typed answers, stop or disconnect; keyboard cleanup is best-effort.
+- Reject duplicate button labels, fence slow question sends against typed answers/disconnects, and prevent expired timers from affecting replacement questions.
+- Report uncertain answer delivery without exposing internal errors or automatically replaying a choice.
+- Live Telegram question/button testing remains pending.
+
 ## 0.2.3
 
 ### Added

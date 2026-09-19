@@ -94,6 +94,7 @@ export interface TelegramInboundMessage {
   text: string;
   messageId: number;
   forceSteer?: boolean;
+  forceFollowUp?: boolean;
   attachment?: IncomingAttachment;
   downloadSignal?: AbortSignal;
 }
@@ -264,6 +265,78 @@ export class TelegramSessionConnection {
       return response;
     } catch { throw new Error("Telegram file download failed or was cancelled."); }
   }
+  private question?: { nonce: string; messageId: number; text: string; options: Array<{ label: string; reply: string }>; expires: number; timer: NodeJS.Timeout };
+  private asking = false;
+  private questionGeneration = 0;
+  private stopping = false;
+
+  async askQuestion(text: string, options: Array<{ label: string; reply: string }>, externalSignal?: AbortSignal): Promise<void> {
+    if (!text.trim() || text.length > 4096 || options.length < 1 || options.length > 8 ||
+        options.some(option => !option.label.trim() || option.label.length > 64 || !option.reply.trim() || option.reply.length > 1024))
+      throw new Error("Questions require 1–8 options, question <=4096 characters, labels <=64 and replies <=1024; values cannot be blank.");
+    if (new Set(options.map(option => option.label.trim().toLowerCase())).size !== options.length)
+      throw new Error("Question button labels must be distinct.");
+    if (this.stopping) throw new Error("Telegram is disconnecting.");
+    if (this.asking) throw new Error("Another Telegram question is being sent. Ask one question at a time.");
+    const signal = AbortSignal.any([this.controller.signal, ...(externalSignal ? [externalSignal] : []), AbortSignal.timeout(20_000)]);
+    signal.throwIfAborted();
+    this.asking = true;
+    try {
+      const cleanup = this.expireQuestion();
+      const generation = this.questionGeneration;
+      await cleanup;
+      signal.throwIfAborted();
+      const nonce = randomBytes(12).toString("hex");
+      const choices = options.map(option => ({ ...option }));
+      const message = await this.call<TelegramMessage>("sendRichMessage", {
+        chat_id: this.ownerUserId, rich_message: { markdown: text },
+        reply_markup: { inline_keyboard: choices.map((option, index) => [{ text: option.label, callback_data: `ask:${nonce}:${index}` }]) },
+      }, signal);
+      if (generation !== this.questionGeneration || this.stopping || signal.aborted) {
+        await this.call("editMessageReplyMarkup", { chat_id: this.ownerUserId, message_id: message.message_id, reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(2_000)).catch(() => undefined);
+        throw new Error("Question was superseded or cancelled while sending; no buttons remain active.");
+      }
+      const timer = setTimeout(() => {
+        if (this.question?.nonce === nonce) void this.expireQuestion().catch(() => undefined);
+      }, 15 * 60_000);
+      timer.unref?.();
+      this.question = { nonce, messageId: message.message_id, text, options: choices, expires: Date.now() + 15 * 60_000, timer };
+      if (signal.aborted) { await this.expireQuestion(); signal.throwIfAborted(); }
+    } finally { this.asking = false; }
+  }
+
+  private async expireQuestion(): Promise<void> {
+    this.questionGeneration++;
+    const question = this.question;
+    this.question = undefined;
+    if (!question) return;
+    clearTimeout(question.timer);
+    await this.call("editMessageReplyMarkup", { chat_id: this.ownerUserId, message_id: question.messageId, reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(2_000)).catch(() => undefined);
+  }
+
+  private async handleQuestionButton(query: NonNullable<TelegramUpdate["callback_query"]>, onMessage: (message: TelegramInboundMessage) => void | Promise<void>): Promise<void> {
+    if (query.from.id !== this.ownerUserId || query.from.is_bot || query.message?.chat.id !== this.ownerUserId || query.message.chat.type !== "private") return;
+    const question = this.question;
+    const index = question?.options.findIndex((_option, i) => query.data === `ask:${question.nonce}:${i}`) ?? -1;
+    const valid = question && index >= 0 && question.messageId === query.message.message_id && Date.now() < question.expires;
+    if (valid && this.incoming) {
+      await this.call("answerCallbackQuery", { callback_query_id: query.id, text: "A file is downloading. Please choose again after it finishes." }, AbortSignal.timeout(5_000)).catch(() => undefined);
+      return;
+    }
+    if (valid) { this.question = undefined; clearTimeout(question.timer); }
+    await this.call("answerCallbackQuery", { callback_query_id: query.id, text: valid ? "Answer received" : "This question has expired or was already answered." }, AbortSignal.timeout(5_000)).catch(() => undefined);
+    if (!valid || this.controller.signal.aborted) return;
+    await this.call("editMessageReplyMarkup", { chat_id: this.ownerUserId, message_id: question.messageId, reply_markup: { inline_keyboard: [] } }, AbortSignal.timeout(2_000)).catch(() => undefined);
+    if (this.controller.signal.aborted) return;
+    const option = question.options[index]!;
+    try {
+      await onMessage({ text: `Answer to Telegram question:\n${question.text}\n\nSelected: ${option.label}\n${option.reply}`, messageId: question.messageId, forceFollowUp: true });
+    } catch {
+      // Never auto-retry: the callback may have been admitted before failing.
+      await this.sendPlainMessage("Could not confirm delivery of your selection to the agent. Please check the conversation and type your answer if needed.").catch(() => undefined);
+    }
+  }
+
   private updateOffer?: { nonce: string; messageId: number; act: (approved: boolean) => void | Promise<void> };
 
   async offerUpdate(text: string, version: string, act: (approved: boolean) => void | Promise<void>): Promise<void> {
@@ -391,6 +464,8 @@ export class TelegramSessionConnection {
   }
 
   async stop(): Promise<void> {
+    this.stopping = true;
+    await this.expireQuestion();
     this.updateOffer = undefined;
     this.controller.abort();
     this.incoming?.controller.abort();
@@ -636,7 +711,8 @@ export class TelegramSessionConnection {
           this.offset = update.update_id + 1;
 
           if (update.callback_query) {
-            await this.handleUpdateButton(update.callback_query);
+            if (update.callback_query.data?.startsWith("ask:")) await this.handleQuestionButton(update.callback_query, onMessage);
+            else await this.handleUpdateButton(update.callback_query);
             continue;
           }
           const message = update.message;
@@ -701,6 +777,7 @@ export class TelegramSessionConnection {
               await this.sendPlainMessage("Usage: /steer <message>");
               continue;
             }
+            await this.expireQuestion();
             await onMessage({
               text: commandArgument,
               messageId: message.message_id,
@@ -709,6 +786,7 @@ export class TelegramSessionConnection {
             continue;
           }
           if (commandName === "stop" || text.toLowerCase() === "stop") {
+            await this.expireQuestion();
             if (this.incoming) {
               this.incoming.controller.abort();
               await this.sendPlainMessage("File download cancellation requested.");
@@ -724,6 +802,7 @@ export class TelegramSessionConnection {
             await this.sendPlainMessage("A file is still downloading. Please resend your instruction after it finishes, or send /stop to cancel.");
             continue;
           }
+          await this.expireQuestion(); // A typed answer supersedes pending buttons.
           await onMessage({
             text: message.text,
             messageId: message.message_id,

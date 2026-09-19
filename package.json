@@ -1,6 +1,6 @@
 {
   "name": "@comput/pi-telegram",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Use Telegram as a native frontend for live Pi coding-agent sessions.",
   "license": "MIT",
   "author": "Martin Bundgaard",

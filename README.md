@@ -6,11 +6,11 @@ Pi Telegram supports multiple project bots, persistent Pi-session assignments, o
 
 ## Release status
 
-**0.2.3** adds incoming documents/photos, working-status fixes, direct completion of pending managed-bot setup, versioned startup notifications, and owner-approved npm update buttons. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.2.4** adds `telegram_ask`: Rich Markdown questions with custom inline choice buttons and authenticated follow-up answers. It includes the incoming documents/photos, working-status fixes, setup shortcuts and update notifications introduced in 0.2.3. It retains inline photo delivery and the multi-bot/session safeguards from previous releases. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 
-Validation covers TypeScript and automated tests. Live two-session lifecycle, inline-photo, setup-completion and update-button/install smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
+Validation covers TypeScript and automated tests. Live question-button, two-session lifecycle, inline-photo, setup-completion and update-button/install smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
 
 ## Install
 
@@ -25,6 +25,14 @@ pi install git:github.com/mbundgaard/PiTelegram
 ```
 
 Start a new Pi session or run `/reload` after installation. Installation is global but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session. Interactive setup requires Pi's local terminal UI; masked token setup is not available through RPC or non-interactive modes.
+
+## Questions with buttons
+
+During a Telegram-originated request, the agent can use `telegram_ask` to send a Rich Markdown question with 1–8 custom inline buttons. Each option has a visible `label` (up to 64 characters) and a `reply` (up to 1,024 characters). The question can contain up to 4,096 characters.
+
+Only the paired owner can select an option. The selected question, label and reply re-enter the same connection's authenticated input path as a normal follow-up, never as a steering command. Sending the question does not grant approval or block the tool waiting for an answer.
+
+Only one question is active per connection. A new question, typed answer, stop, disconnect or 15-minute expiry invalidates it; keyboard removal is best-effort if Telegram is unreachable. Duplicate and stale clicks are rejected. You can always type an answer instead. Button labels must be distinct. Replies or disconnects during a slow question send prevent its buttons from becoming active afterward. If routing a selection fails, Telegram reports uncertain delivery without automatically retrying it. Buttons do not replace local setup/security confirmation dialogs. Live Rich Message/button testing remains pending after reload.
 
 ## Update notifications
 

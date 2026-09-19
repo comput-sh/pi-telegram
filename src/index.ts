@@ -30,7 +30,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
   let activeContext: ExtensionContext | undefined;
   const responses = registerResponseRouting(pi, () => connections.connection);
   const connections = new ConnectionManager({
-    async input({ text, forceSteer, attachment, downloadSignal }, current, ctx) {
+    async input({ text, forceSteer, forceFollowUp, attachment, downloadSignal }, current, ctx) {
       if (attachment) {
         if (!downloadSignal || downloadSignal.aborted || connections.connection !== current) return;
         await current.sendPlainMessage("Downloading attachment…");
@@ -52,7 +52,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
         }
         return;
       }
-      const routed = forceSteer
+      const routed = forceFollowUp ? { text, deliverAs: "followUp" as const } : forceSteer
         ? { text, deliverAs: "steer" as const }
         : routeTelegramInput(text);
       // Steering a console task must not cause its subsequent output to leak.
@@ -339,6 +339,23 @@ export default function piTelegram(pi: ExtensionAPI): void {
         content: [{ type: "text", text: outcome.message }],
         details: outcome,
       };
+    },
+  });
+  pi.registerTool({
+    name: "telegram_ask",
+    label: "Ask with Telegram Buttons",
+    description: "Send a Rich Markdown question with 1–8 inline choice buttons during an active Telegram-originated request. Each option has a visible label and a reply sent back as an authenticated follow-up. Only one question is active per connection; a new question or typed answer supersedes it. Buttons expire after 15 minutes or disconnect. Returns after sending, not after the user's answer.",
+    promptSnippet: "Ask the Telegram owner a question with custom choice buttons",
+    promptGuidelines: ["Use telegram_ask when offering choices during a Telegram request. Use clear labels and replies that accurately reflect each choice. After sending, wait for the owner's answer; do not treat tool success as approval or repeat the question in your final response. Buttons do not bypass local setup/security confirmations."],
+    parameters: Type.Object({
+      question: Type.String({ minLength: 1, maxLength: 4096 }),
+      options: Type.Array(Type.Object({ label: Type.String({ minLength: 1, maxLength: 64 }), reply: Type.String({ minLength: 1, maxLength: 1024 }) }, { additionalProperties: false }), { minItems: 1, maxItems: 8 }),
+    }, { additionalProperties: false }),
+    async execute(_id, params, signal) {
+      const target = responses.destination();
+      if (!target) throw new Error("Questions require an active Telegram-originated request.");
+      await target.askQuestion(params.question, params.options, signal);
+      return { content: [{ type: "text", text: "Question sent with buttons. Await the owner's reply; no choice has been made yet." }], details: { status: "sent" } };
     },
   });
   for (const photo of [false, true]) pi.registerTool({
