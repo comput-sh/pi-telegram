@@ -2,6 +2,12 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## Unreleased
+
+- Retry assigned-session startup connection failures with bounded attempts and backoff (1, 3, 10, then 30 seconds) until success or session shutdown. Recheck persisted assignment before every attempt; never provision or reclaim a transferred/released bot.
+- Treat a failed connection notice as a failed startup connection instead of silently claiming success. Retry attempts can repeat a notice whose delivery was uncertain.
+- Add regression coverage for transient startup failure, cancellation, and repeated shutdown/start cycles. Live reload/update verification remains pending; npm-installed sessions need a published update before these changes take effect.
+
 ## 0.2.4
 
 - Add `telegram_ask` for Rich Markdown questions with 1–8 custom inline choice buttons.

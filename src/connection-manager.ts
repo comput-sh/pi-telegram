@@ -224,12 +224,11 @@ export class ConnectionManager {
             ...getHostIdentity(),
           }),
         )
-        .catch(() =>
-          ctx.ui.notify(
-            `Open @${bot.username} in Telegram and press Start.`,
-            "info",
-          ),
-        );
+        .catch(() => {
+          // Do not claim a successful reconnect when the owner never receives
+          // its connection notice. Startup recovery will retry this assignment.
+          throw new Error("Telegram connection notice could not be delivered.");
+        });
       check();
       this.callbacks.connected?.(current, ctx);
       return true;

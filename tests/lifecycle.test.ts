@@ -607,6 +607,27 @@ test("stop can cancel an in-flight attachment without admitting a request", asyn
     } finally { await pi.emit("session_shutdown"); }
   }));
 
+test("startup recovers from a transient failure and reconnects across repeated reloads", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    const pi = harness(cwd);
+    try {
+      network.failToken = "test-111";
+      await pi.emit("session_start");
+      network.failToken = undefined;
+      for (let i = 0; i < 200 && !network.messages.some(text => text.startsWith("Connected")); i++)
+        await new Promise(resolve => setTimeout(resolve, 20));
+      assert.ok(network.messages.some(text => text.startsWith("Connected")));
+      for (let i = 0; i < 3; i++) {
+        await pi.emit("session_shutdown");
+        const count = network.messages.filter(text => text.startsWith("Connected")).length;
+        await pi.emit("session_start");
+        assert.equal(network.messages.filter(text => text.startsWith("Connected")).length, count + 1);
+        assert.equal((await loadProjectSettings(cwd))?.bots[0]?.sessionId, "main");
+      }
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
 test("a real inbound request routes through its receipt to the receiving bot", async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });

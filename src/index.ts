@@ -17,6 +17,7 @@ import { resolveTelegramProjectFile } from "./files.ts";
 import { runningPackage, latestVersion, newerVersion, installPrefix, installUpdate, applyUpdateWhenIdle } from "./updates.ts";
 import type { TelegramSessionConnection } from "./telegram.ts";
 import { receiveProjectAttachment } from "./incoming-files.ts";
+import { reconnectAssignedSession } from "./reconnect.ts";
 
 const RELEASE_NOTES_URL = "https://github.com/mbundgaard/PiTelegram/blob/main/CHANGELOG.md";
 
@@ -126,6 +127,19 @@ export default function piTelegram(pi: ExtensionAPI): void {
     },
   });
   const flows = new SetupFlows(connections);
+  const retryConnection = (ctx: ExtensionContext, signal: AbortSignal) => {
+    void reconnectAssignedSession({
+      signal,
+      attempt: async (attemptSignal) => {
+        const settings = await loadProjectSettings(ctx.cwd);
+        attemptSignal.throwIfAborted();
+        const bot = settings && findSessionBot(settings, ctx.sessionManager.getSessionId());
+        if (!bot) return true; // Released/transferred assignments must never be reclaimed.
+        return connections.connect(bot, ctx, attemptSignal);
+      },
+      onRetry: () => ctx.ui.notify("Telegram reconnect pending; retrying automatically while this session remains assigned.", "warning"),
+    }).catch(() => ctx.ui.notify("Telegram automatic reconnect stopped unexpectedly.", "warning"));
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     // Pi emits shutdown/start for new, resume, fork, and reload. A fresh
@@ -134,6 +148,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
     await connections.disconnect(ctx);
     activeContext = ctx;
     lifetime = new AbortController();
+    const startupSignal = lifetime.signal;
     updateCheck = latestVersion(updateLifetime.signal);
     responses.reset();
     if (ctx.mode === "print" || ctx.mode === "json") return;
@@ -141,13 +156,16 @@ export default function piTelegram(pi: ExtensionAPI): void {
       const settings = await loadProjectSettings(ctx.cwd);
       const bot =
         settings && findSessionBot(settings, ctx.sessionManager.getSessionId());
-      if (bot) await connections.connect(bot, ctx, lifetime.signal);
+      if (bot && !(await connections.connect(bot, ctx, AbortSignal.any([startupSignal, AbortSignal.timeout(30_000)]))))
+        retryConnection(ctx, startupSignal);
     } catch {
+      if (startupSignal.aborted) return;
       await connections.disconnect(ctx);
       ctx.ui.notify(
-        "Pi Telegram did not connect. Use /telegram-status or /telegram-start to inspect the assignment.",
+        "Pi Telegram did not connect. Automatic reconnection will retry the current assignment.",
         "warning",
       );
+      retryConnection(ctx, startupSignal);
     }
   });
   pi.on("session_shutdown", async (_event, ctx) => {
