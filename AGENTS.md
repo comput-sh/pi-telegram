@@ -11,12 +11,12 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## 0.5.0 state-based routing and model guidance (release preparation)
+## State-based routing and model guidance (released in 0.5.0)
 
 - Ordinary text steers active Telegram-originated work and starts a normal turn when idle. No queued acknowledgement. Leading `!` characters are literal text, unchanged; `/steer` remains an explicit command.
 - The inbound notice now uses the approved concise reply/progress/formatting guidance. Activity guidance is prominent and distinct from draft streaming in the tool contract; transport semantics are unchanged.
 - Button replies and attachments remain follow-ups. The console-origin protection remains: reject Telegram steering into unrelated console work with a resend notice rather than silently queueing it.
-- Source and regression tests updated. Local validation: typecheck and 116 tests passed; pack/diff checks passed (23 package files), audit found zero vulnerabilities. Authorized 0.5.0 publication is being prepared; activation and live routing verification remain pending.
+- Source and regression tests updated. Local validation: typecheck and 116 tests passed; pack/diff checks passed (23 package files), audit found zero vulnerabilities. Authorized 0.5.0 publication is verified below; activation and live routing verification remain pending.
 - Host 0.4.1 was installed and the user confirmed integrated plain previews, replacement updates, and finalization looked good. This confirms that single-session visual test, not two-session lifecycle behavior.
 
 ## Plain-preview rendering fix (released in 0.4.1)
@@ -89,8 +89,12 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-- Source is prepared as **0.5.0**; public npm latest was verified as **0.4.1** before publication. Release workflow/provenance verification is pending. Host installation remains **0.4.1**; no installation or reload is authorized as part of this publication.
-- Fresh 0.5.0 release validation passed: `npm ci`, typecheck and 116 tests, audit (zero vulnerabilities), pack check (23 intended files), and diff check. Keep `artifacts/` and `.pi-intercom/` out of release commits and packages.
+- Source and public npm `latest`: **0.5.0**, released from `6275bfdfbe6d47778bf12b8f20331c9c1ca3e96e`.
+- Trusted Publishing run **35530702310** succeeded. Public registry metadata and SLSA attestation identify that exact commit and `.github/workflows/publish.yml`; the attestation names run attempt 1.
+- Downloaded tarball SHA-1: `57ab82707b02434d71890f560e78f869aa336628`; 23 files. SHA-512 matches registry integrity and the SLSA subject digest.
+- Fresh release validation passed: `npm ci`, typecheck and **116 tests**, audit (zero vulnerabilities), pack check (23 intended files), and diff check; workflow CI validation succeeded.
+- Host installation remains **0.4.1**; this publication did not install or reload 0.5.0. Single-session 0.4.1 visual confirmation does not verify 0.5.0 routing or two-session lifecycle behavior; those live tests remain pending.
+- Keep `artifacts/` and `.pi-intercom/` out of release commits and packages. Do not republish 0.5.0.
 
 ### Historical 0.4.1 checkpoint
 
