@@ -8,28 +8,16 @@ import {
   wrapTelegramInput,
 } from "../src/routing.ts";
 
-test("routeTelegramInput uses explicit steering and escapes literal bangs", () => {
-  assert.deepEqual(routeTelegramInput("Normal request"), {
-    text: "Normal request",
-    deliverAs: "followUp",
+for (const busy of [false, true]) {
+  test(`text routes by busy state (${busy}) without interpreting leading bangs`, () => {
+    for (const text of ["Normal request", "! Change direction", "!Immediately", "!!important", "!", "  !! literal  "]) {
+      assert.deepEqual(routeTelegramInput(text, busy), {
+        text,
+        deliverAs: busy ? "steer" : "followUp",
+      });
+    }
   });
-  assert.deepEqual(routeTelegramInput("! Change direction"), {
-    text: "Change direction",
-    deliverAs: "steer",
-  });
-  assert.deepEqual(routeTelegramInput("!Immediately"), {
-    text: "Immediately",
-    deliverAs: "steer",
-  });
-  assert.deepEqual(routeTelegramInput("!!important"), {
-    text: "!important",
-    deliverAs: "followUp",
-  });
-  assert.deepEqual(routeTelegramInput("!"), {
-    text: "!",
-    deliverAs: "followUp",
-  });
-});
+}
 
 test("wrapTelegramInput adds the public transport notice", () => {
   assert.equal(

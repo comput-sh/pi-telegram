@@ -4,9 +4,15 @@ Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/
 
 Pi Telegram supports multiple project bots, persistent Pi-session assignments, owner-only input, explicit follow-up and steering semantics, explicit asynchronous messaging, removable Working status, Rich Markdown messages, cancellation, command menus, and project-file attachments.
 
+## 0.5.0: state-based incoming text and explicit activity
+
+Ordinary text now steers an active Telegram-originated task and starts a new turn when idle. Leading `!` characters are literal text, not controls, and the queued acknowledgement is removed. Steering is delivered at Pi's next processing opportunity; it does not forcibly cancel running tools. Unrelated console work remains protected: Telegram text is rejected with a resend notice while it is running. Button replies and attachments remain follow-ups. Version 0.5.0 also shortens inbound formatting/progress guidance and separates explicit activity control from draft streaming. Update and reload to activate these changes; live routing and two-session verification remain pending.
+
 ## Release status
 
-**0.4.1** switches streaming previews to plain `sendMessageDraft` to avoid slow Rich Draft animation observed on mobile. Full-text prefix matching and Rich Markdown final delivery are unchanged. Previews are capped at 4,096 characters; full answers are retained. An isolated plain-draft test was visually confirmed; integrated activation and live verification remain pending. Publication uses GitHub Actions Trusted Publishing with signed provenance.
+**0.5.0** includes state-based routing, literal leading bangs, no queued acknowledgements, concise inbound guidance, and clearer explicit Working control. Local validation passed; live routing verification remains pending. See [CHANGELOG.md](CHANGELOG.md) for upgrade notes.
+
+**0.4.1** switches streaming previews to plain `sendMessageDraft` to avoid slow Rich Draft animation observed on mobile. Full-text prefix matching and Rich Markdown final delivery are unchanged. Previews are capped at 4,096 characters; full answers are retained. Host 0.4.1 was installed, and the user confirmed integrated plain previews, replacement updates, and finalization looked good in a single-session test. Two-session lifecycle verification remains pending. Publication uses GitHub Actions Trusted Publishing with signed provenance.
 
 See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
 
@@ -42,7 +48,7 @@ Version 0.3.0 replaces `telegram_ask` and automatic response streaming with `tel
 {"message":"Apply the changes?","buttons":[{"label":"Apply","reply":"Apply the proposed changes."}]}
 ```
 
-Status-only calls work; `{}` finalizes any pending draft and clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
+**Activity control (separate from draft streaming):** Explicitly set `status: "working"` when starting work and on updates while activity continues. Send concise progress at meaningful milestones during tool work. `{"status":"working"}` maintains activity without a message. Omit status when no activity continues, including the final response or waiting for the user; omission removes Working (never Idle) and finalizes any pending draft. Execution and worker activity do not automatically change status. Refresh explicitly during long activity before the 15-minute expiry; the heartbeat does not replace this refresh. `{}` finalizes any pending draft and clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
 
 Only the paired owner can select an option. The selected question, label and reply re-enter the same connection's authenticated input path as a normal follow-up, never as a steering command. Sending the question does not grant approval or block the tool waiting for an answer.
 
@@ -50,7 +56,7 @@ Only one question is active per connection. A new question, typed answer, stop, 
 
 ## Preview-rendering fix (0.4.1)
 
-Version 0.4.1 uses plain `sendMessageDraft` previews instead of Rich Drafts. Preview text is capped at 4,096 characters with a visible truncation marker; full input is retained for prefix matching and Rich Markdown final delivery. Continue sending full accumulated snapshots. A controlled plain-draft test was visually confirmed by the user after Rich Drafts showed only a few characters; the integrated change still needs installation/reload and live verification. Update and reload to activate this fix.
+Version 0.4.1 uses plain `sendMessageDraft` previews instead of Rich Drafts. Preview text is capped at 4,096 characters with a visible truncation marker; full input is retained for prefix matching and Rich Markdown final delivery. Continue sending full accumulated snapshots. After a controlled plain-draft test, host 0.4.1 was installed and the user confirmed integrated plain previews, replacement updates, and finalization looked good. This verifies that single-session visual test only; two-session lifecycle testing remains pending. The 0.5.0 changes described above require installation/reload and separate live verification.
 
 ## Explicit draft streaming (0.4.0)
 
@@ -180,12 +186,11 @@ Startup never removes a newly configured webhook: use `/telegram-start` to expli
 
 | Input | Behavior |
 |---|---|
-| Normal message | Starts a separate follow-up request |
-| `!message` | Steers active work |
-| `!!message` | Sends a literal leading `!` |
+| Normal message | Steers active Telegram work; starts a new turn when idle |
+| `!message` or `!!message` | Literal text, unchanged; same routing as normal messages |
 | `stop` or `/stop` | Cancels the current Telegram task |
 | `/status` | Shows project, branch when available, hostname/IP, and controls |
-| `/steer message` | Same steering behavior as `!message` |
+| `/steer message` | Explicitly steers active Telegram work |
 | `/reload` | Reloads Pi while idle |
 | `/help` | Shows Pi Telegram controls |
 
@@ -195,8 +200,8 @@ Startup never removes a newly configured webhook: use `/telegram-start` to expli
 - No automatic assistant-text forwarding or Thinking/tool previews. Explicit sends persist as Telegram Rich Messages.
 - In-memory receipts preserve inbound provenance for steering, Stop, files, and stale-connection protection. A copied transport notice is not authentication.
 - Proactive text sends require this session's verified assignment, not a prior inbound request. Console transcripts are never automatically forwarded.
-- Telegram steering into a local-console task is rejected; ordinary messages can queue.
-- Native connection/queue acknowledgements, commands, update prompts, and attachment notices remain extension-controlled.
+- Telegram steering into a local-console task is rejected with a resend notice; ordinary busy text steers only Telegram-originated work.
+- Native connection acknowledgements, commands, update prompts, and attachment notices remain extension-controlled.
 - Working is explicitly controlled by the tool; omitted status removes it. Cleanup is best-effort on disconnect/network failure. Failed sends report uncertain delivery without automatic replay.
 
 ## File attachments
@@ -213,7 +218,7 @@ Safeguards include canonical paths restricted to the active project, blocked cre
 
 Send a **document or photo** in the paired owner's private bot chat. A caption becomes a normal follow-up instruction with the saved file path. Caption text is not interpreted as a Telegram command or steering prefix. Without a caption, the agent is asked to acknowledge receipt and ask what you want done before inspecting it. Photos use Telegram's largest available size; send images as documents to preserve original bytes.
 
-Downloads show a **Downloading attachment…** acknowledgement, followed by **Received** and a queue notice when Pi is busy. Files are saved with unique sanitized names in `.pi/telegram-inbox/`, protected by an inbox `.gitignore`. Each file is limited to **20 MB** (the hosted Bot API download limit); the inbox is limited to **100 files / 100 MB**. Limits are enforced while streaming, not just from metadata. Files remain until you remove them locally; there is no automatic deletion. Interrupted partial downloads are removed.
+Downloads show a **Downloading attachment…** acknowledgement, followed by **Received**, without a queued acknowledgement. Files are saved with unique sanitized names in `.pi/telegram-inbox/`, protected by an inbox `.gitignore`. Each file is limited to **20 MB** (the hosted Bot API download limit); the inbox is limited to **100 files / 100 MB**. Limits are enforced while streaming, not just from metadata. Files remain until you remove them locally; there is no automatic deletion. Interrupted partial downloads are removed.
 
 Only the stored owner can upload. The receiving connection binds the resulting agent request; a disconnect/transfer cancels pending downloads and cannot route them into a replacement session. Files are untrusted data, never automatically executed or extracted. The downloader rejects symbolic inbox paths and Git-tracked inbox files. File contents are not scanned for secrets or malware.
 

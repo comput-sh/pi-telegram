@@ -47,9 +47,9 @@ function formatSessionMessage(
     ...(details.branch ? [`Branch: ${details.branch}`] : []),
     `Host: ${details.hostname} (${details.ip})`,
     "",
-    "Normal messages: follow-up",
-    "Prefix !: steer active work",
-    "Prefix !!: send a literal leading !",
+    "Normal messages: steer active Telegram work; new turn when idle",
+    "/steer message: explicitly steer active work",
+    "Leading ! characters are literal text",
     "Send stop: cancel the current Telegram task",
   ].join("\n");
 }

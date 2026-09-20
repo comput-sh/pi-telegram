@@ -149,14 +149,15 @@ Session shutdown aborts pending setup as well as polling, then releases the runt
 ## Telegram transport
 
 - Accept only private messages from the stored owner.
-- Ordinary input uses `deliverAs: "followUp"`; `!` uses `"steer"`; `!!` escapes a literal bang.
+- Ordinary text uses `deliverAs: "steer"` while busy and `"followUp"` when idle. Leading `!` characters are preserved literally with no prefix parsing; `/steer` remains an explicit command. Buttons and attachments remain follow-ups; no queued acknowledgements.
 - Deliver inbound messages using one-use in-memory receipts admitted through Pi's `input.source === "extension"`. The transport notice is guidance, not authentication.
 - Bind each receipt to its receiving connection; retire queued receipts on disconnect/session replacement so old queued work cannot send to a new bot. No transcript replay or automatic response forwarding.
 - `telegram_send` independently sends optional Rich Markdown, optional `working` status, and optional buttons. It requires the current session's ready, persisted assignment but not an inbound request. A stale active inbound request cannot redirect to a replacement connection.
-- Reject Telegram steering into a local-console task; normal Telegram requests may queue separately.
+- Reject Telegram steering into a local-console task, including automatic steering from ordinary busy text; ask the owner to resend when that task finishes.
 - Track stop eligibility from inbound provenance, not visual status. Proactive sends do not grant permission to stop unrelated console work.
-- Status is a separate removable Working message with a five-second heartbeat and 15-minute expiry, not a chat action or automatic draft. Omitted status deletes it. Stop/disconnect clean it up best-effort.
-- Serialize explicit outbound calls, fence them to the connection, and report uncertain delivery without replay. Only explicit sends publish agent content; control/queue/attachment notices remain extension-controlled.
+- Status is a separate removable Working message with a five-second heartbeat and 15-minute expiry, not a chat action or automatic draft. Agents explicitly set Working at work start and on updates while activity continues, refresh before expiry, and omit status when done or waiting for the user. Omission removes Working and finalizes any pending draft; no Idle is shown. Execution/worker activity does not automatically mirror status. Stop/disconnect clean it up best-effort.
+- The concise inbound notice requests explicit replies, concise milestone progress during tools, and suitable Rich Markdown formatting. Detailed activity and draft protocols live in tool descriptions/guidelines. The notice never authenticates a request; one-use receipts do.
+- Serialize explicit outbound calls, fence them to the connection, and report uncertain delivery without replay. Only explicit sends publish agent content; control/attachment notices remain extension-controlled.
 - Keep hidden reasoning, prompts, raw tool arguments/results, and credentials private.
 - Let `/help`, `/status`, `/stop`, and `/reload` bypass the model.
 - Allow `telegram_send_file` only during a Telegram-originated request and only for safe project files.

@@ -2,6 +2,13 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## 0.5.0
+
+- Route ordinary text as steering while a Telegram-originated task is running, or as a new turn when idle, without requiring a prefix. Remove special `!`/`!!` parsing: leading bangs remain literal, unmodified text. Keep `/steer` as an explicit command.
+- Remove queued acknowledgements. Buttons and attachments remain follow-ups; unrelated console tasks remain protected by a rejection/resend notice. Steering does not forcibly cancel running tools.
+- Shorten inbound guidance to explicit replies, milestone progress and Rich Markdown formatting; keep draft mechanics in tool guidance. Clarify explicit activity control separately from draft streaming: set Working at work start and while continuing, refresh before expiry, and omit it when done or waiting for the user. No automatic activity mirroring.
+- Upgrade note: ordinary busy text now steers instead of queueing; leading bangs are preserved literally. Installation/reload is required to activate this release. Live routing and two-session verification remain pending.
+
 ## 0.4.1
 
 - Use plain `sendMessageDraft` previews to avoid the slow Rich Draft animation observed on mobile. Keep explicit full-snapshot prefix matching and Rich Markdown final delivery unchanged.

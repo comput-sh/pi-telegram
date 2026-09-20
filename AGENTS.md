@@ -11,11 +11,19 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## 0.5.0 state-based routing and model guidance (release preparation)
+
+- Ordinary text steers active Telegram-originated work and starts a normal turn when idle. No queued acknowledgement. Leading `!` characters are literal text, unchanged; `/steer` remains an explicit command.
+- The inbound notice now uses the approved concise reply/progress/formatting guidance. Activity guidance is prominent and distinct from draft streaming in the tool contract; transport semantics are unchanged.
+- Button replies and attachments remain follow-ups. The console-origin protection remains: reject Telegram steering into unrelated console work with a resend notice rather than silently queueing it.
+- Source and regression tests updated. Local validation: typecheck and 116 tests passed; pack/diff checks passed (23 package files), audit found zero vulnerabilities. Authorized 0.5.0 publication is being prepared; activation and live routing verification remain pending.
+- Host 0.4.1 was installed and the user confirmed integrated plain previews, replacement updates, and finalization looked good. This confirms that single-session visual test, not two-session lifecycle behavior.
+
 ## Plain-preview rendering fix (released in 0.4.1)
 
 - User reported 0.4.0 Rich Draft tests showed only “TE” twice before final persistence. An isolated plain `sendMessageDraft` test was visually confirmed as good. This supports the transport change but does not isolate heartbeat effects or verify integrated behavior.
 - Local source now uses plain previews, bounded to 4,096 characters with marked, surrogate-safe truncation. Full snapshots remain intact for prefix matching and Rich Markdown final persistence. Tool description clarifies preview limits versus input limits.
-- Host 0.4.0 was installed and reload was followed by live test messages. User authorized publication as 0.4.1. Public npm latest and release provenance are verified below; installation is separate and integrated smoke testing remains pending.
+- Host 0.4.0 was installed and reload was followed by live test messages. User authorized publication as 0.4.1. Public npm latest and release provenance are verified below; installation was separate; the subsequent single-session visual confirmation is recorded in the current handoff below. Two-session smoke testing remains pending.
 
 ## Explicit draft streaming (released in 0.4.0)
 
@@ -81,10 +89,15 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-- Source and public npm `latest`: **0.4.1**, released from `7b40e1d9783b0716ba299917f1f2a616382e6ee4`.
+- Source is prepared as **0.5.0**; public npm latest was verified as **0.4.1** before publication. Release workflow/provenance verification is pending. Host installation remains **0.4.1**; no installation or reload is authorized as part of this publication.
+- Fresh 0.5.0 release validation passed: `npm ci`, typecheck and 116 tests, audit (zero vulnerabilities), pack check (23 intended files), and diff check. Keep `artifacts/` and `.pi-intercom/` out of release commits and packages.
+
+### Historical 0.4.1 checkpoint
+
+- Source and public npm `latest` at that checkpoint: **0.4.1**, released from `7b40e1d9783b0716ba299917f1f2a616382e6ee4`.
 - Trusted Publishing run **35473205305** succeeded. Registry metadata and SLSA attestation identify that commit and `.github/workflows/publish.yml`.
 - Tarball SHA-1: `4423bbca035c443ee2ca98b7496c283786a8bd3d`; 23 files. **107 tests passed**, typecheck/pack/diff checks passed, zero audit vulnerabilities; CI validation succeeded.
-- Host npm was last updated and verified as **0.4.0**. This publication did not install or reload 0.4.1. The user confirmed an isolated plain-draft test rendered correctly; integrated 0.4.1 rendering/finalization and two-session smoke testing remain pending.
+- Publication itself did not install or reload 0.4.1. Subsequently, host **0.4.1** was installed and the user confirmed integrated plain previews, replacement updates, and finalization looked good. This confirms single-session visuals only; two-session smoke testing and activation/live verification of unreleased changes remain pending.
 - Keep `artifacts/` out of commits/packages. Do not republish 0.4.1.
 
 ### Historical 0.4.0 checkpoint
@@ -146,9 +159,11 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 ## Telegram and AI integration
 
 - Accept only private text and supported document/photo attachments from the stored Telegram owner.
-- Ordinary messages are follow-ups; `!` requests steering and `!!` escapes a literal bang. Reject Telegram steering into a running console-originated task.
+- Ordinary text steers while busy and starts a normal turn when idle; leading `!` characters are literal text, not controls. `/steer` remains an explicit command. Reject Telegram steering into a running console-originated task. Buttons and attachments remain follow-ups. Do not send queued acknowledgements.
 - One-use in-memory request receipts admitted via Pi's extension input source bind output to the receiving connection. The public transport prefix is formatting guidance, not evidence of origin. Clear receipts on disconnect/session replacement.
 - Do not automatically forward assistant text or tool activity. Agent content goes through explicit `telegram_send` calls, including proactive sends from console/scheduled work. Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
+- The concise inbound notice guides replies, milestone progress and Rich Markdown formatting, not authentication; streaming mechanics remain in tool descriptions/guidelines.
+- Explicitly set `status: "working"` at work start and while activity continues, including status-only calls. Omit status when no activity continues (final response or waiting for user); this removes Working and finalizes pending drafts. Execution/worker activity does not mirror status automatically; refresh explicitly before the 15-minute expiry.
 - Persist explicit model messages as Rich Markdown with optional buttons. Omitted status removes Working; explicit `working` shows a removable status message. No MarkdownV2/plain-text fallback for model answers.
 - Stop eligibility follows inbound provenance, independently of status visibility. No settled transcript replay. Background status failures produce rate-limited local warnings.
 - Setup requires local interactive TUI; masked tokens must never pass through chat or model-callable tool arguments.

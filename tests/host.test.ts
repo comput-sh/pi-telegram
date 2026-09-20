@@ -33,9 +33,9 @@ test("formatSessionStatusMessage uses the status heading", () => {
   assert.match(message, /^Pi Telegram session status$/m);
   assert.match(message, /^Branch: main$/m);
   assert.match(message, /^Host: workstation \(192\.168\.1\.20\)$/m);
-  assert.match(message, /^Normal messages: follow-up$/m);
-  assert.match(message, /^Prefix !: steer active work$/m);
-  assert.match(message, /^Prefix !!: send a literal leading !$/m);
+  assert.match(message, /^Normal messages: steer active Telegram work; new turn when idle$/m);
+  assert.match(message, /^\/steer message: explicitly steer active work$/m);
+  assert.match(message, /^Leading ! characters are literal text$/m);
   assert.match(message, /^Send stop: cancel the current Telegram task$/m);
 });
 

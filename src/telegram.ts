@@ -18,9 +18,9 @@ const PROGRESS_LINE_LIMIT = 512;
 const TELEGRAM_HELP = [
   "Pi Telegram controls",
   "",
-  "Normal message: follow-up",
-  "!message or /steer message: steer active work",
-  "!!message: send a literal leading !",
+  "Normal message: steer active Telegram work, or start a new turn when idle",
+  "/steer message: explicitly steer active work",
+  "Leading ! characters are literal text",
   "/status: show the connected Pi session",
   "/stop or stop: cancel the current Telegram task",
   "/reload: reload Pi resources when idle",
