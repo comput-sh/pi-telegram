@@ -80,9 +80,52 @@ test("skill JSON recipes use today's registered schemas and button limits", asyn
   assert.ok(examples >= 10);
 });
 
+// npm 10 returns an array; npm 12 returns an object keyed by package name.
+// Normalize only these demonstrated formats, failing closed before safety checks.
+function packFiles(stdout: string, expectedName: string): string[] {
+  const output: unknown = JSON.parse(stdout);
+  let entries: unknown[];
+  if (Array.isArray(output)) entries = output;
+  else {
+    assert.ok(output && typeof output === "object", "Expected npm pack JSON object or array");
+    assert.deepEqual(Object.keys(output), [expectedName], "Expected exactly the requested package");
+    entries = Object.values(output);
+  }
+  assert.equal(entries.length, 1, "Expected exactly one packed package");
+  const pack = entries[0] as { name?: unknown; files?: unknown } | null;
+  assert.ok(pack && typeof pack === "object" && !Array.isArray(pack), "Invalid packed package");
+  assert.equal(pack.name, expectedName, "Unexpected packed package name");
+  assert.ok(Array.isArray(pack.files) && pack.files.length > 0, "Expected nonempty package file list");
+  const files = pack.files.map((file: unknown) => {
+    assert.ok(file && typeof file === "object" && !Array.isArray(file), "Invalid package file entry");
+    const path = (file as { path?: unknown }).path;
+    assert.ok(typeof path === "string" && path.trim().length > 0, "Expected nonempty package file path");
+    return path;
+  });
+  assert.equal(new Set(files).size, files.length, "Duplicate package file paths");
+  return files;
+}
+
+test("npm pack JSON parser accepts array and name-keyed formats and rejects invalid results", () => {
+  const name = "@comput/pi-telegram";
+  const pack = { name, files: [{ path: "package.json" }, { path: skillPath }] };
+  for (const output of [[pack], { [name]: pack }]) {
+    assert.deepEqual(packFiles(JSON.stringify(output), name), ["package.json", skillPath]);
+  }
+  for (const output of [
+    null, true, 42, "text", [], {}, [pack, pack], { [name]: pack, other: pack },
+    { other: pack }, { [name]: [pack] }, [null], [[]], [{}],
+    [{ ...pack, name: "other" }], { [name]: { ...pack, name: "other" } },
+    ...[undefined, null, {}, [], [null], ["README.md"], [{}], [{ path: 1 }], [{ path: "" }], [{ path: "  " }], [{ path: "x" }, { path: "x" }]].flatMap(files => [[{ ...pack, files }], { [name]: { ...pack, files } }]),
+  ]) assert.throws(() => packFiles(JSON.stringify(output), name));
+  for (const stdout of ["", " ", "[", '{"@comput/pi-telegram":', "notice\n[]", "[]\n{}"]) {
+    assert.throws(() => packFiles(stdout, name));
+  }
+});
+
 test("npm pack includes all skill files and no private/development directories", { skip: process.env.npm_execpath ? false : "Run via npm test to inspect npm's actual pack list" }, async () => {
-  const packed = JSON.parse(execFileSync(process.execPath, [process.env.npm_execpath!, "pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: root, encoding: "utf8" }));
-  const files = packed[0].files.map((file: { path: string }) => file.path);
+  const stdout = execFileSync(process.execPath, [process.env.npm_execpath!, "pack", "--dry-run", "--json", "--ignore-scripts"], { cwd: root, encoding: "utf8" });
+  const files = packFiles(stdout, "@comput/pi-telegram");
   for (const file of await skillFiles()) assert.ok(files.includes(file), `missing package file ${file}`);
   const docs = ["docs/user-guide.md", "docs/agent-tools.md", "docs/development-status.md"];
   for (const file of docs) assert.ok(files.includes(file), `missing offline guide ${file}`);
