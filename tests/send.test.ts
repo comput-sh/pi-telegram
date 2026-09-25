@@ -2,62 +2,117 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TelegramSessionConnection } from "../src/telegram.ts";
 
-test("explicit send supports message, status and buttons; omitted status deletes Working", async () => {
-  const oldFetch = globalThis.fetch;
-  const calls: Array<{ method: string; body: any }> = [];
-  let id = 0;
+test("persistent posts, activity and edit refs are explicit independent actions", async () => {
+  const original = globalThis.fetch, calls: Array<{ method: string; body: any }> = [];
   globalThis.fetch = (async (url, init) => {
     calls.push({ method: String(url).split("/").at(-1)!, body: JSON.parse(String(init?.body)) });
-    return new Response(JSON.stringify({ ok: true, result: { message_id: ++id } }));
+    return new Response(JSON.stringify({ ok: true, result: { message_id: calls.length } }));
   }) as typeof fetch;
-  const connection = new TelegramSessionConnection("test-token", 42);
+  const connection = new TelegramSessionConnection("placeholder", 42);
   try {
-    await connection.sendOutbound(undefined, "working");
-    assert.equal(calls.at(-1)?.method, "sendMessage");
-    assert.equal(calls.at(-1)?.body.text, "Working…");
-    const workingId = (connection as any).workingStatus.id;
-    await connection.sendOutbound("**Done**");
-    assert.ok(calls.some(call => call.method === "deleteMessage" && call.body.message_id === workingId));
-    assert.equal(calls.at(-1)?.body.rich_message.markdown, "**Done**");
+    const { messageRef } = await connection.post("Acknowledged");
+    assert.ok(messageRef); assert.ok(!messageRef.includes("placeholder"));
+    assert.equal(calls[0].method, "sendRichMessage");
+    await connection.activity("working");
+    const working = (connection as any).workingStatus;
+    await connection.post("Milestone"); await connection.edit(messageRef, "Corrected acknowledgement");
+    assert.equal((connection as any).workingStatus, working);
+    await connection.activity("working");
+    assert.equal(calls.filter(c => c.method === "sendMessage").length, 1); // Refresh does not reorder Working.
+    const button = await connection.post("Apply?", [{ label: "Yes", reply: "Apply changes" }]);
+    await assert.rejects(connection.edit(button.messageRef, "Changed question"), /button-bearing/);
+    await assert.rejects(connection.edit("42", "Unknown"), /Unknown/);
+    await connection.activity("clear");
     assert.equal((connection as any).workingStatus, undefined);
-    await connection.sendOutbound("Checking…", "working");
-    assert.equal(calls.at(-1)?.body.text, "Working…");
-    await connection.sendOutbound("Apply?", undefined, [{ label: "Yes", reply: "Apply the changes" }]);
-    assert.equal((connection as any).workingStatus, undefined);
-    assert.equal(calls.at(-1)?.method, "sendRichMessage");
-    assert.equal(calls.at(-1)?.body.reply_markup.inline_keyboard[0][0].text, "Yes");
-    assert.ok((connection as any).question);
-    await connection.sendOutbound(undefined, "working");
-    await connection.sendOutbound();
-    assert.equal((connection as any).workingStatus, undefined);
-    assert.ok(!JSON.stringify(calls).includes("Idle"));
-    await assert.rejects(connection.sendOutbound(undefined, undefined, [{ label: "Yes", reply: "Yes" }]), /require a message/);
-    await assert.rejects(connection.sendOutbound(" "), /blank/);
-    await assert.rejects(connection.sendOutbound("text", "idle" as any), /Supported status/);
-    const before = calls.length;
-    await assert.rejects(connection.sendOutbound("cancelled", undefined, undefined, AbortSignal.abort()));
-    assert.equal(calls.length, before);
-  } finally { await connection.stop(); globalThis.fetch = oldFetch; }
+    await assert.rejects(connection.post(" "), /blank/);
+    await assert.rejects(connection.activity("idle" as any), /working or clear/);
+    await assert.rejects(connection.post("cancelled", undefined, AbortSignal.abort()));
+  } finally { await connection.stop(); globalThis.fetch = original; }
 });
 
-test("concurrent explicit sends are ordered and stop deletes the status", async () => {
-  const oldFetch = globalThis.fetch;
-  const texts: string[] = [];
-  let deletes = 0;
+test("ordered explicit deliveries never infer prefix identity", async () => {
+  const original = globalThis.fetch, texts: string[] = [];
   globalThis.fetch = (async (url, init) => {
     const body = JSON.parse(String(init?.body));
     if (String(url).endsWith("/sendRichMessage")) texts.push(body.rich_message.markdown);
-    if (String(url).endsWith("/deleteMessage")) deletes++;
-    return new Response(JSON.stringify({ ok: true, result: { message_id: 1 } }));
+    return new Response(JSON.stringify({ ok: true, result: { message_id: texts.length } }));
   }) as typeof fetch;
-  const connection = new TelegramSessionConnection("test-token", 42);
+  const connection = new TelegramSessionConnection("placeholder", 42);
   try {
-    await Promise.all([connection.sendOutbound("one", "working"), connection.sendOutbound("two")]);
-    assert.deepEqual(texts, ["one", "two"]);
-    assert.equal((connection as any).workingStatus, undefined);
-    await connection.sendOutbound(undefined, "working");
+    await Promise.all([connection.post("one"), connection.post("one extended")]);
+    assert.deepEqual(texts, ["one", "one extended"]);
+    await connection.stop(); await assert.rejects(connection.post("late"));
+  } finally { await connection.stop(); globalThis.fetch = original; }
+});
+
+test("failed activity deletion can be retried explicitly without deleting newer status", async () => {
+  const original = globalThis.fetch, deleted: number[] = []; let next = 0, fail = true;
+  globalThis.fetch = (async (url, init) => {
+    const body = JSON.parse(String(init?.body));
+    if (String(url).endsWith("/deleteMessage")) { deleted.push(body.message_id); if (fail) throw new Error("offline"); }
+    return new Response(JSON.stringify({ ok: true, result: { message_id: ++next } }));
+  }) as typeof fetch;
+  const connection = new TelegramSessionConnection("placeholder", 42);
+  try {
+    await connection.activity("working");
+    await assert.rejects(connection.activity("clear"), /could not be confirmed/);
+    fail = false;
+    await connection.activity("clear");
+    assert.deepEqual(deleted, [1, 1]);
+    await connection.activity("working");
     await connection.stop();
-    assert.ok(deletes >= 2);
-    await assert.rejects(connection.sendOutbound("late"));
-  } finally { await connection.stop(); globalThis.fetch = oldFetch; }
+    assert.equal(deleted.length, 3); assert.notEqual(deleted[2], 1);
+  } finally { await connection.stop(); globalThis.fetch = original; }
+});
+
+test("lost successful status deletion is idempotent and cannot strand newer Working", async () => {
+  const original = globalThis.fetch, live = new Set<number>(), deleted: number[] = []; let next = 0, loseResponse = true;
+  globalThis.fetch = (async (url, init) => {
+    const method = String(url).split("/").at(-1), body = JSON.parse(String(init?.body));
+    if (method === "sendMessage") { live.add(++next); return new Response(JSON.stringify({ ok: true, result: { message_id: next } })); }
+    assert.equal(method, "deleteMessage"); deleted.push(body.message_id);
+    if (!live.delete(body.message_id)) return new Response(JSON.stringify({ ok: false, error_code: 400, description: "Bad Request: message to delete not found" }), { status: 400 });
+    if (loseResponse) { loseResponse = false; throw new Error("response lost after remote deletion"); }
+    return new Response(JSON.stringify({ ok: true, result: true }));
+  }) as typeof fetch;
+  const connection = new TelegramSessionConnection("placeholder", 42);
+  try {
+    await connection.activity("working");
+    await assert.rejects(connection.activity("clear"), /could not be confirmed/);
+    assert.deepEqual([...live], []);
+    await connection.activity("working"); assert.deepEqual([...live], [2]);
+    await connection.activity("clear");
+    assert.deepEqual(deleted, [1, 1, 2]); assert.equal(live.size, 0);
+    assert.equal((connection as any).statusCleanup.size, 0);
+    assert.equal((connection as any).workingStatus, undefined);
+  } finally { await connection.stop(); globalThis.fetch = original; }
+});
+
+test("non-missing status failures remain retryable without blocking newer captured IDs", async () => {
+  const original = globalThis.fetch;
+  try {
+    for (const failure of [
+      { error_code: 403, description: "Forbidden: bot was blocked by the user" },
+      { error_code: 400, description: "Bad Request: chat not found" },
+      { error_code: 403, description: "Bad Request: message to delete not found" },
+    ]) {
+      let next = 0; const deleted: number[] = [];
+      globalThis.fetch = (async (url, init) => {
+        const method = String(url).split("/").at(-1), body = JSON.parse(String(init?.body));
+        if (method === "sendMessage") return new Response(JSON.stringify({ ok: true, result: { message_id: ++next } }));
+        deleted.push(body.message_id);
+        if (body.message_id === 1) return new Response(JSON.stringify({ ok: false, ...failure }), { status: failure.error_code });
+        return new Response(JSON.stringify({ ok: true, result: true }));
+      }) as typeof fetch;
+      const connection = new TelegramSessionConnection("placeholder", 42);
+      try {
+        await connection.activity("working"); await assert.rejects(connection.activity("clear"), /could not be confirmed/);
+        await connection.activity("working"); await assert.rejects(connection.activity("clear"), /could not be confirmed/);
+        assert.deepEqual(deleted, [1, 1, 2]);
+        assert.deepEqual([...(connection as any).statusCleanup], [1]);
+        await connection.activity("working");
+        assert.equal((connection as any).workingStatus.id, 3);
+      } finally { await connection.stop(); }
+    }
+  } finally { globalThis.fetch = original; }
 });

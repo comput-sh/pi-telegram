@@ -51,12 +51,28 @@ test("resolveTelegramProjectFile blocks credential-like files", async () => {
       "pi-telegram.local.json",
       ".env.production",
       "client.pem",
+      "credentials.json",
+      "project.credentials.json",
+      "other.credentials.json",
+      "PROJECT.CREDENTIALS.JSON",
     ]) {
       await writeFile(join(project, fileName), "secret", "utf8");
       await assert.rejects(
         () => resolveTelegramProjectFile(project, fileName),
         /will not send credential/,
       );
+    }
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
+});
+
+test("credential filename policy permits unrelated report names", async () => {
+  const project = await mkdtemp(join(tmpdir(), "pi-telegram-files-"));
+  try {
+    for (const name of ["harmlessreport.json", "credentials-report.json", "project.credentials.txt"]) {
+      await writeFile(join(project, name), "public report", "utf8");
+      assert.equal((await resolveTelegramProjectFile(project, name)).fileName, name);
     }
   } finally {
     await rm(project, { recursive: true, force: true });

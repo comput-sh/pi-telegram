@@ -157,6 +157,7 @@ async function fixture(
     if (method === "sendMessage" && network.failMessages)
       throw new Error("offline");
     if (method === "getManagedBotToken") return ok("test-111");
+    if (method === "sendRichMessage") return ok({ message_id: network.calls.length });
     if (method !== "getUpdates") return ok(true);
     if (body.allowed_updates?.includes("managed_bot"))
       return ok(network.managedUpdates ?? []);
@@ -573,9 +574,37 @@ test("busy owner attachments remain follow-ups without queued notices; captions 
       await pi.emit("input", { text, source: "extension" });
       await pi.emit("message_start", { message: { role: "user", content: text } });
       assert.ok(!network.calls.includes("sendRichMessageDraft"));
-      await pi.tool("telegram_send", { message: "Received your file." });
+      await pi.tool("telegram_post", { message: "Received your file." });
       assert.ok(network.calls.includes("sendRichMessage"));
     } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("attachment download and admission do not await a stalled Downloading notice", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1,
+      caption: "Review this", document: { file_id: "doc", file_name: "report.txt", file_size: 5 },
+      chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    const fetch = globalThis.fetch;
+    let release: (() => void) | undefined;
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).endsWith("/sendMessage") && JSON.parse(String(init?.body)).text === "Downloading attachment…") {
+        await new Promise<void>((resolve, reject) => {
+          release = resolve;
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        });
+      }
+      return fetch(url, init);
+    }) as typeof fetch;
+    const pi = harness(cwd);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !pi.sent.length; i++) await new Promise(r => setTimeout(r, 10));
+      assert.ok(release, "control notice is stalled");
+      assert.equal(pi.sent.length, 1, "file was downloaded and admitted without the notice completing");
+      assert.equal(pi.deliveries[0]?.deliverAs, "followUp");
+    } finally { release?.(); await pi.emit("session_shutdown"); }
   }));
 
 test("captionless photos reach the agent with an ask-before-inspecting instruction", async () =>
@@ -641,23 +670,103 @@ test("startup recovers from a transient failure and reconnects across repeated r
     } finally { await pi.emit("session_shutdown"); }
   }));
 
-test("telegram_send can notify proactively, but requires this session's verified assignment", async () =>
+test("telegram_post can notify proactively, but requires this session's verified assignment", async () =>
   fixture(async (cwd, network) => {
     const pi = harness(cwd);
-    await assert.rejects(pi.tool("telegram_send", { message: "not connected" }), /No ready Telegram/);
+    await assert.rejects(pi.tool("telegram_post", { message: "not connected" }), /No ready Telegram/);
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
     try {
       await pi.emit("session_start");
       // No Telegram receipt or inbound user message has been created.
-      await pi.tool("telegram_send", { message: "Background task finished" });
+      await pi.tool("telegram_post", { message: "Background task finished" });
       assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
       await saveProjectSettings(cwd, { version: 2, bots: [bot("111", "other")] });
-      await assert.rejects(pi.tool("telegram_send", { message: "wrong session" }), /assignment changed|No ready/);
+      await assert.rejects(pi.tool("telegram_post", { message: "wrong session" }), /assignment changed|No ready/);
       assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
     } finally { await pi.emit("session_shutdown"); }
   }));
 
-test("inbound requests are delivered without automatic replies; telegram_send replies explicitly", async () =>
+test("explicit output tools are proactive, independent, and reject retired references", async () =>
+  fixture(async (cwd, network) => {
+    const pi = harness(cwd);
+    for (const [name, args] of [
+      ["telegram_post", { message: "not connected" }],
+      ["telegram_post", { content: [{ type: "button_row", buttons: [{ label: "Wait", reply: "Wait" }] }] }],
+      ["telegram_draft", { action: "start", message: "not connected" }],
+      ["telegram_edit", { messageRef: "unknown", message: "not connected" }],
+      ["telegram_activity", { action: "working" }],
+      ["telegram_chat_action", { action: "typing" }],
+      ["telegram_thinking", { action: "start" }],
+    ] as const) await assert.rejects(pi.tool(name, args), /No ready Telegram/);
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    try {
+      await pi.emit("session_start");
+      await pi.tool("telegram_activity", { action: "working" });
+      const typing = await pi.tool("telegram_chat_action", { action: "typing" });
+      assert.deepEqual(typing.details, { action: "typing", refreshSeconds: 0 });
+      assert.ok(network.calls.includes("sendChatAction"));
+      const thinking = await pi.tool("telegram_thinking", { action: "start", refreshSeconds: 0 });
+      assert.equal(typeof thinking.details.thinkingRef, "string");
+      assert.ok(network.calls.includes("sendRichMessageDraft"));
+      const stopped = await pi.tool("telegram_thinking", { action: "stop", thinkingRef: thinking.details.thinkingRef });
+      assert.equal(stopped.details.thinkingRef, thinking.details.thinkingRef);
+      const handoff = await pi.tool("telegram_thinking", { action: "handoff", thinkingRef: thinking.details.thinkingRef, message: "Full answer preview" });
+      assert.equal(typeof handoff.details.draftRef, "string");
+      await pi.tool("telegram_draft", { action: "update", draftRef: handoff.details.draftRef, message: "Full revised answer preview" });
+      await pi.tool("telegram_draft", { action: "finalize", draftRef: handoff.details.draftRef });
+      const embedded = await pi.tool("telegram_post", { content: [{ type: "paragraph", parts: [{ type: "text", text: "Choose " }, { type: "button", label: "Wait", reply: "Wait" }] }] });
+      assert.equal(typeof embedded.details.messageRef, "string");
+      await assert.rejects(pi.tool("telegram_edit", { messageRef: embedded.details.messageRef, message: "No replacement" }), /button/i);
+      const post = await pi.tool("telegram_post", { message: "Permanent milestone" });
+      assert.equal(typeof post.details.messageRef, "string");
+      await pi.tool("telegram_edit", { messageRef: post.details.messageRef, message: "Revised milestone" });
+      const draft = await pi.tool("telegram_draft", { action: "start", message: "First preview" });
+      assert.equal(typeof draft.details.draftRef, "string");
+      await pi.tool("telegram_draft", { action: "update", draftRef: draft.details.draftRef, message: "Completely replaced preview" });
+      await pi.tool("telegram_activity", { action: "clear" });
+      const final = await pi.tool("telegram_draft", { action: "finalize", draftRef: draft.details.draftRef });
+      assert.equal(typeof final.details.messageRef, "string");
+      await assert.rejects(pi.tool("telegram_draft", { action: "update", draftRef: draft.details.draftRef, message: "stale" }));
+      await pi.emit("session_shutdown");
+      await pi.emit("session_start");
+      await assert.rejects(pi.tool("telegram_edit", { messageRef: final.details.messageRef, message: "old connection" }));
+      assert.equal(pi.sent.length, 0); // No inbound receipt needed for these explicit outputs.
+      assert.ok(network.calls.includes("sendRichMessage"));
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("settled processed Telegram request without a reply gets one agent reminder, not a Telegram message", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1,
+      text: "ORIGINAL_PRIVATE_INSTRUCTION", chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    const pi = harness(cwd);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !pi.sent.length; i++) await new Promise(r => setTimeout(r, 10));
+      const original = pi.sent[0]!;
+      await pi.emit("input", { text: original, source: "extension" });
+      await pi.emit("agent_start");
+      await pi.emit("message_start", { message: { role: "user", content: original } });
+      const before = network.calls.filter(method => method === "sendRichMessage").length;
+      await pi.emit("agent_settled");
+      for (let i = 0; i < 120 && pi.sent.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+      assert.equal(pi.sent.length, 2);
+      assert.match(pi.sent[1]!, /Telegram reply reminder/);
+      assert.ok(!pi.sent[1]!.includes("ORIGINAL_PRIVATE_INSTRUCTION"));
+      assert.equal(pi.deliveries[1], undefined, "idle-only reminder cannot queue into console work");
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, before);
+      await pi.emit("input", { text: pi.sent[1], source: "extension" });
+      await pi.emit("agent_start");
+      await pi.emit("message_start", { message: { role: "user", content: pi.sent[1] } });
+      await pi.tool("telegram_post", { message: "Brief response" });
+      await pi.emit("agent_settled");
+      assert.equal(pi.sent.length, 2);
+    } finally { await pi.emit("session_shutdown"); }
+  }));
+
+test("inbound requests are delivered without automatic replies; telegram_post replies explicitly", async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
     network.inbound.push({
@@ -686,7 +795,7 @@ test("inbound requests are delivered without automatic replies; telegram_send re
         },
       });
       assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 0);
-      await pi.tool("telegram_send", { message: "Explicit reply" });
+      await pi.tool("telegram_post", { message: "Explicit reply" });
       await pi.emit("agent_settled");
       assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 1);
     } finally {
@@ -764,7 +873,7 @@ test("busy button replies remain authenticated follow-ups without queued notices
     pi.setIdle(false);
     try {
       await pi.emit("session_start");
-      await pi.tool("telegram_send", { message: "Continue?", buttons: [{ label: "Yes", reply: "!continue" }] });
+      await pi.tool("telegram_post", { message: "Continue?", buttons: [{ label: "Yes", reply: "!continue" }] });
       assert.ok(callbackData);
       assert.ok(deliver);
       deliver(new Response(JSON.stringify({ ok: true, result: [{ update_id: 1, callback_query: {

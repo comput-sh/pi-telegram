@@ -1,254 +1,88 @@
 # Pi Telegram
 
-Use Telegram as a native frontend for live [Pi coding-agent](https://github.com/earendil-works/pi-mono) sessions.
+Use your private Telegram bot to talk to a running [Pi coding-agent](https://pi.dev/) session. Setup happens in your local terminal; afterward you can send requests and receive replies in Telegram.
 
-Pi Telegram supports multiple project bots, persistent Pi-session assignments, owner-only input, explicit follow-up and steering semantics, explicit asynchronous messaging, removable Working status, Rich Markdown messages, cancellation, command menus, and project-file attachments.
+**Documentation for 0.6.0.** Upgrading from 0.5.0? The generic `telegram_send` tool is replaced by explicit Post/Draft/Edit/Activity operations, with separate draft and Working lifecycles. Read the [migration guide](docs/agent-tools.md#migration-from-050). Thinking and the optional usage skill are described in the [agent/tool guide](docs/agent-tools.md).
 
-## 0.5.0: state-based incoming text and explicit activity
+## 1. Before you start
 
-Ordinary text now steers an active Telegram-originated task and starts a new turn when idle. Leading `!` characters are literal text, not controls, and the queued acknowledgement is removed. Steering is delivered at Pi's next processing opportunity; it does not forcibly cancel running tools. Unrelated console work remains protected: Telegram text is rejected with a resend notice while it is running. Button replies and attachments remain follow-ups. Version 0.5.0 also shortens inbound formatting/progress guidance and separates explicit activity control from draft streaming. Update and reload to activate these changes; live routing and two-session verification remain pending.
+- A working interactive Pi installation and model/provider login. First get a harmless reply in Pi itself; use **Local Pi** `/login` and `/model` if needed. See [Pi's quick start](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md).
+- Node meeting your installed Pi's requirements (the examined current Pi requires **22.19.0 or later**), npm, and network access to your model provider and Telegram. The extension's own lower Node floor is not a Pi compatibility guarantee.
+- A Telegram account and a bot you control. Start with a regular **BotFather bot**; manager-created bots are an advanced option.
+- A project folder you trust. Pi can read files and run commands there. **Keep the Pi terminal/process running**; this package is not a hosted bot service.
 
-## Release status
+Commands below are labeled **Terminal**, **Local Pi** or **Telegram** so you know where to type them.
 
-**0.5.0** includes state-based routing, literal leading bangs, no queued acknowledgements, concise inbound guidance, and clearer explicit Working control. Local validation passed; live routing verification remains pending. See [CHANGELOG.md](CHANGELOG.md) for upgrade notes.
+## 2. Install
 
-**0.4.1** switches streaming previews to plain `sendMessageDraft` to avoid slow Rich Draft animation observed on mobile. Full-text prefix matching and Rich Markdown final delivery are unchanged. Previews are capped at 4,096 characters; full answers are retained. Host 0.4.1 was installed, and the user confirmed integrated plain previews, replacement updates, and finalization looked good in a single-session test. Two-session lifecycle verification remains pending. Publication uses GitHub Actions Trusted Publishing with signed provenance.
-
-See [CHANGELOG.md](CHANGELOG.md) for versioned changes, upgrade notes and limitations. It is included in the npm package so agents can read the changes between their installed and target versions; update checks do not automatically inject release notes into agent context.
-
-Validation covers TypeScript and automated tests. Live question-button, two-session lifecycle, inline-photo, setup-completion and update-button/install smoke testing remain pending. See the [npm package](https://www.npmjs.com/package/@comput/pi-telegram) for current availability.
-
-## Install
+In a **Terminal**:
 
 ```bash
 pi install npm:@comput/pi-telegram
+cd /path/to/your/project
+pi
 ```
 
-Alternatively, install the current source directly from GitHub:
+Use Pi's package installer, not bare `npm i`. If Pi was already running, use **Local Pi** `/reload` to load the installed extension. Review any project-trust prompt; do not blindly approve unknown projects. Installation alone does not create a bot or assign it to a session.
+
+## 3. Connect your bot
+
+1. In **Telegram**, open verified **@BotFather**, send `/newbot`, and follow its instructions.
+2. In **Local Pi**, run `/telegram-start` → **Add a bot…** → **Add BotFather bot**.
+3. Enter the bot's exact username and token in Pi's local setup UI. **Never paste the token into an agent conversation, Telegram chat or issue.** Token entry is masked.
+4. If asked about an existing webhook or session transfer, confirm only if you intend to take over that integration.
+5. Open **your bot's private Telegram chat**, press **Start**, then send the exact one-time pairing code shown in Pi. It expires after three minutes; Escape cancels local pairing.
+6. Wait for the Connected notice. Use **Local Pi** `/telegram-status` if you are unsure.
+
+## 4. Try a harmless request
+
+In **Telegram**, send:
+
+> Reply here with “Connection works.” Do not read files, change anything or run commands.
+
+A connection notice is not proof that a model reply works. If no answer arrives, check Pi locally for provider/login errors. Replies require the agent to use Telegram's explicit reply tools; ordinary terminal text is not automatically forwarded.
+
+## 5. Continue later
+
+Each bot is assigned to **one persistent Pi session**, not every session in a folder. Keep Pi running for Telegram to work. After closing it, return to the same project and resume:
 
 ```bash
-pi install git:github.com/mbundgaard/PiTelegram
+# Terminal: choose the original session
+pi -r
+# Or continue the most recent session in this project
+pi -c
 ```
 
-Start a new Pi session or run `/reload` after installation. Installation is global but startup is passive: Pi Telegram does not prompt, provision, or contact Telegram unless a bot is already assigned to the current persistent Pi session. Interactive setup requires Pi's local terminal UI; masked token setup is not available through RPC or non-interactive modes.
+**Local Pi** `/session` shows its ID; **Terminal** `pi --session <id>` opens that exact session. Resuming reconnects its assigned bot. Starting `/new` or forking creates a different session; it does not inherit the assignment. Use `/telegram-start` only if you deliberately want to select or transfer a bot. Avoid `--no-session` for a setup you want to resume.
 
-## Explicit asynchronous messaging
+## Troubleshooting
 
-Version 0.3.0 replaces `telegram_ask` and automatic response streaming with `telegram_send`. Update the installed package and reload to activate it. **Migration:** agents must explicitly call `telegram_send` for every intended reply; ordinary commentary and final text are no longer forwarded.
-
-`telegram_send` accepts three optional elements:
-
-- `message`: Rich Markdown, up to 32,768 characters (4,096 with buttons).
-- `status`: `"working"` shows Working. **Omitting status removes the existing indicator**; there is no Idle state. Working is a separate removable message with a heartbeat, not a Telegram chat action. It expires after 15 minutes unless refreshed; stop/disconnect clean it up best-effort.
-- `buttons`: 1–8 distinct `label`/`reply` choices; requires a message. Labels allow 64 characters and replies 1,024.
-
-```json
-{"message":"Checking the tests…","status":"working"}
-{"message":"Done—the tests passed."}
-{"message":"Apply the changes?","buttons":[{"label":"Apply","reply":"Apply the proposed changes."}]}
-```
-
-**Activity control (separate from draft streaming):** Explicitly set `status: "working"` when starting work and on updates while activity continues. Send concise progress at meaningful milestones during tool work. `{"status":"working"}` maintains activity without a message. Omit status when no activity continues, including the final response or waiting for the user; omission removes Working (never Idle) and finalizes any pending draft. Execution and worker activity do not automatically change status. Refresh explicitly during long activity before the 15-minute expiry; the heartbeat does not replace this refresh. `{}` finalizes any pending draft and clears status. The tool sends to this session's ready, assigned bot, including from console or scheduled work, without requiring an incoming Telegram message. It never automatically connects or selects another bot. File/photo tools retain their existing request-bound safeguards. Ordinary assistant output is no longer forwarded; the agent must explicitly send every intended reply and progress update. Calls await delivery, not an answer.
-
-Only the paired owner can select an option. The selected question, label and reply re-enter the same connection's authenticated input path as a normal follow-up, never as a steering command. Sending the question does not grant approval or block the tool waiting for an answer.
-
-Only one question is active per connection. A new question, typed answer, stop, disconnect or 15-minute expiry invalidates it; keyboard removal is best-effort if Telegram is unreachable. Duplicate and stale clicks are rejected. You can always type an answer instead. Button labels must be distinct. Replies or disconnects during a slow question send prevent its buttons from becoming active afterward. If routing a selection fails, Telegram reports uncertain delivery without automatically retrying it. Buttons do not replace local setup/security confirmation dialogs. Live Rich Message/button testing remains pending after reload.
-
-## Preview-rendering fix (0.4.1)
-
-Version 0.4.1 uses plain `sendMessageDraft` previews instead of Rich Drafts. Preview text is capped at 4,096 characters with a visible truncation marker; full input is retained for prefix matching and Rich Markdown final delivery. Continue sending full accumulated snapshots. After a controlled plain-draft test, host 0.4.1 was installed and the user confirmed integrated plain previews, replacement updates, and finalization looked good. This verifies that single-session visual test only; two-session lifecycle testing remains pending. The 0.5.0 changes described above require installation/reload and separate live verification.
-
-## Explicit draft streaming (0.4.0)
-
-`telegram_send` uses the following rules starting in 0.4.0. Update the installed package and reload to activate them; 0.3.0 persists every supplied message instead.
-
-- `message` + `status: "working"`, without buttons: show a temporary native draft (plain-text preview from 0.4.1; Rich Draft in 0.4.0). Send the **full accumulated text**, not deltas.
-- If text starts with the active draft's exact text, update the same draft; identical text does not rewrite it. Different text persists the old draft before starting another.
-- Omit status: persist the complete supplied answer and remove Working. An extended draft is finalized once; different text persists the old draft and then the new message.
-- `{}`: finalize the pending draft and clear Working. `{"status":"working"}`: maintain activity without finalizing.
-- Buttons always produce a persistent message, never a draft. If the button message extends the draft, only the complete button message is persisted.
-- Only the active draft on this connection participates in prefix matching—not earlier posted messages, Working notices, or other bots.
-- Stop, disconnect, and the 15-minute inactivity timeout discard pending draft state without publishing unfinished text. Telegram previews may linger until expiry. Failed delivery is uncertain and is not automatically replayed.
-
-Each preview update still requires an explicit tool call. This is not automatic token streaming. Live client rendering/finalization remains unverified.
-
-## Update notifications
-
-Startup notifications include the **loaded extension version**: `Connected · ProjectName · IP · v0.2.3`.
-
-On each session startup/reload, Pi Telegram checks npm's `latest` stable release in the background (eight-second timeout). A failed check does not prevent connection, and no “up to date” message is sent. `PI_OFFLINE` disables the check. Unassigned sessions remain silent and do not connect to Telegram.
-
-Connected owners with a newer version available receive **Update to vX.Y.Z** and **Not now** buttons. Approval is bound to that live connection and offered version; unauthorized, duplicate, or stale clicks cannot install anything. Installation waits until Pi is idle, then reloads only the approving session. Other sessions using the same npm installation pick up the update when they reload; they are not restarted automatically. “Not now” dismisses the offer until a future startup check.
-
-Automatic installation supports standard Pi global/project npm locations using the default npm CLI. Local source/Git checkouts, symlinked packages, pinned Pi package sources, custom package-manager configurations, and unrecognized installations receive a notification only and must be updated locally. Installation uses the exact approved version from the public npm registry and a host-local heartbeat lock to serialize Pi Telegram update attempts. npm errors/output are not forwarded to Telegram. A failed or interrupted installation is not automatically retried or rolled back; inspect/repair it locally before retrying. Reload and live update-button/install smoke testing remain pending.
-
-## Start Telegram
-
-Run:
-
-```text
-/telegram-start
-```
-
-Or explicitly ask the agent to start Telegram; the `telegram_start` tool opens the same local UI.
-
-- The first menu shows configured bots, **Add a bot…**, **Manage bots…**, and **Cancel**.
-- **Add a bot…** offers BotFather setup, managed creation/completion, and known managed-bot imports.
-- **Manage bots…** contains status, release, removal, manager configuration, pending-request cancellation, and numeric-ID recovery.
-
-Transfers require confirmation. If assignments change while a dialog is open, setup stops and asks you to start again with the current state. Escape cancels each setup step, including the display-name prompt and private pairing.
-
-Within a project, one Pi session can be assigned one bot, and each bot entry has one persistent session assignment. Host-local runtime leases also prevent two local processes from polling the same bot. Assignments in separate project files or on different machines are not globally synchronized; release the old integration before moving a bot between projects or hosts. The assignment uses `ctx.sessionManager.getSessionId()`, so resuming that Pi session reconnects its bot while other sessions remain inactive.
-
-Use `/telegram-release` or ask the agent to release Telegram to stop polling and clear only the current session assignment. Credentials remain available for later selection. Use `/telegram-remove-bot` only when you also want to delete a selected bot's locally stored project credentials; it does not revoke or delete the Telegram bot.
-
-## Bot setup
-
-### Manager mode
-
-Choose **Add a bot… → Create managed bot** or configure the manager directly with `/telegram-setup-manager`. Enter the manager username and token in Pi's local setup UI. Token input is masked and validated with Telegram's `getMe`; the bot must report `can_manage_bots: true`.
-
-The manager configuration is stored globally:
-
-```text
-~/.pi/agent/pi-telegram/settings.json
-```
-
-`PI_TELEGRAM_SETTINGS` can override this global settings path.
-
-Choose the exact username for each new managed bot. Pi Telegram never derives, hashes, truncates, prefixes, or otherwise chooses usernames from project names. Telegram requires the owner to approve the generated managed-bot creation link. After creating the bot and pressing **Start** in Telegram, tell the initiating agent **“done”**. The `telegram_complete_setup` tool checks the real Telegram creation update and completes setup without reopening the Add menu. Alternatively, use `/telegram-complete-setup` or the first **Complete @BotName** option in `/telegram-start`.
-
-Pending creation is bound to the initiating project and persistent Pi session. If the update has not arrived, completion reports that it is still waiting; it never creates a replacement request. “Done” is interpreted conversationally in setup context, not intercepted globally. Local interactive UI is still required for any webhook or transfer confirmations. Older pending requests without session ownership can be recovered through **Add a bot… → Complete**, with explicit local confirmation.
-
-The global manager settings maintain a best-effort catalog of managed bot IDs, usernames, and owner IDs observed in Telegram updates. Child tokens are never stored in that catalog. Telegram has no API for listing every managed bot or resolving an arbitrary private bot username; token retrieval requires a numeric bot ID. If a bot is missing from the catalog but you know its ID and exact username, the recovery flow retrieves and validates its token, restricts access, and performs private owner pairing.
-
-### Manual BotFather mode
-
-Choose **Add a bot… → Add BotFather bot** or run `/telegram-setup-bot`. Enter the exact username and BotFather token in local UI. Pi Telegram validates the token with `getMe`, confirms that local polling may remove an existing webhook, then displays a one-time pairing code. Open the bot in Telegram, press **Start**, and send the exact code to establish the authorized owner.
-
-A regular BotFather bot can be restored after reinstall by adding its username and token again. Re-adding an already paired bot in the same project preserves its stored owner instead of pairing again; to change the owner, explicitly remove the local bot entry and add it again. Tokens are never accepted through model tool arguments or chat.
-
-### Commands
-
-| Local Pi command | Purpose |
+| Symptom | Safe next step |
 |---|---|
-| `/telegram-start` | Select, create, add, or transfer a bot and start it in this Pi session |
-| `/telegram-release` | Disconnect and unassign the current session's bot without deleting it |
-| `/telegram-status` | Show this session's assignment and connection state |
-| `/telegram-remove-bot` | Remove a selected bot's assignment and local project credentials |
-| `/telegram-setup` | Choose manager or manual provisioning mode |
-| `/telegram-setup-manager` | Configure or replace the global manager bot |
-| `/telegram-setup-bot` | Add a manual bot and assign it to this session |
-| `/telegram-complete-setup` | Complete this session's pending managed-bot request without menus |
-| `/telegram-cancel-managed-bot` | Cancel a pending managed-bot request |
+| `/telegram-start` is missing | **Terminal:** check `pi list` and `pi config`; enable this package in the correct scope. **Local Pi:** `/reload`. |
+| Connected, but no answer | Confirm a working model/provider in local Pi and inspect its errors. Ask for a brief Telegram reply; do not share tokens or private logs. |
+| Bot is silent after restarting Pi | Resume the original session in the same project; inspect local `/telegram-status`. A new session is intentionally unassigned. |
+| Pairing code is clipped or expired | Widen the terminal, or Escape and restart pairing. Send the new exact code to your bot, not BotFather; never guess it. |
+| Webhook / `409 Conflict` / bot already polling | Release or close the previous integration intentionally. Do not start competing pollers or remove live lock files. |
+| “Cannot steer a local-console task…” | The current run is not linked to a Telegram request; worker reports can also cause this classification. The text was not delivered. Let that turn finish, then resend. |
+| Stop did not stop every worker | Telegram Stop is request-bound and host cancellation is not a worker-termination guarantee. Inspect/control the work locally; do not infer cancellation from UI cleanup. |
+| File rejected | Check the documented size/path limits. Credential/repository-internal files are blocked; do not bypass those safeguards. |
 
-## Project configuration
+More help: [user guide: commands, recovery, files and advanced setup](docs/user-guide.md).
 
-Each project stores all of its private bot connections in:
+## Update, disconnect or remove
 
-```text
-<project>/.pi/pi-telegram.local.json
-```
+- **Update package — Terminal:** `pi update npm:@comput/pi-telegram`, then **Local Pi:** `/reload`. Plain `pi update` updates Pi itself. Pinned/local/Git installs need their own [update path](docs/user-guide.md#updates-and-removal).
+- **Disconnect this session — Local Pi:** `/telegram-release`. Keeps credentials for later selection.
+- **Forget a project bot — Local Pi:** `/telegram-remove-bot`. Deletes selected local credentials, **not** the Telegram bot or its token at Telegram.
+- **Uninstall extension — Terminal:** `pi remove npm:@comput/pi-telegram`, then reload/restart Pi. Add `-l` only if installed project-locally. This does not erase credentials or revoke tokens; release/remove them first if desired.
+- **Revoke a token/delete a bot — Telegram:** use verified @BotFather's controls. This is separate from local disconnection/removal.
 
-```json
-{
-  "version": 2,
-  "bots": [
-    {
-      "id": "987654321",
-      "username": "MyChosenBot",
-      "token": "<secret>",
-      "ownerUserId": "123456789",
-      "managed": false,
-      "sessionId": "persistent-pi-session-id"
-    }
-  ]
-}
-```
+## Security and more information
 
-An unassigned bot has `"sessionId": null`. Existing version-1 project settings load as one unassigned bot and are rewritten as version 2 when selected.
+Pi packages have full system access. Only the paired owner's private messages are accepted, but Telegram bot chats are **not end-to-end encrypted**. Stored tokens are plaintext: protect local settings and backups, never commit them. Connection/status notices disclose project/host details. Attachment safeguards check paths, not arbitrary file contents for secrets or malware.
 
-Bot IDs and canonical usernames come from Telegram. Before writing credentials, Pi Telegram rejects tracked or symbolic paths and adds the project settings path to the repository's local Git exclude list. Never commit or share it.
-
-There is no cloud registry, Azure service, deterministic project key, or tracked bot binding.
-
-## Transfers and runtime ownership
-
-Moving a bot assigned to another persistent Pi session requires local confirmation and an atomic comparison of the configuration that was confirmed. The old process checks ownership every second, stops polling when ownership changes or cannot be verified, and releases the bot. The new process waits briefly for that handoff.
-
-Failed switches restore the previous assignment and attempt to reconnect its bot, unless another session has since changed the configuration. Release and removal still clean up locally when Telegram's confirmation message cannot be sent.
-
-Private heartbeat leases from `proper-lockfile` protect both pairing and normal polling. Settings locks also renew while operations are active. Abandoned locks become recoverable after two minutes without a heartbeat; do not manually remove locks while Pi processes are running. When upgrading from the earlier PID-lock implementation, release or reload old processes first.
-
-Startup never removes a newly configured webhook: use `/telegram-start` to explicitly confirm takeover. Telegram's `409 Conflict` response remains a secondary safeguard.
-
-## Telegram controls
-
-| Input | Behavior |
-|---|---|
-| Normal message | Steers active Telegram work; starts a new turn when idle |
-| `!message` or `!!message` | Literal text, unchanged; same routing as normal messages |
-| `stop` or `/stop` | Cancels the current Telegram task |
-| `/status` | Shows project, branch when available, hostname/IP, and controls |
-| `/steer message` | Explicitly steers active Telegram work |
-| `/reload` | Reloads Pi while idle |
-| `/help` | Shows Pi Telegram controls |
-
-## Responses
-
-- Authenticate and enqueue inbound messages with guidance to reply through `telegram_send`; polling continues independently.
-- No automatic assistant-text forwarding or Thinking/tool previews. Explicit sends persist as Telegram Rich Messages.
-- In-memory receipts preserve inbound provenance for steering, Stop, files, and stale-connection protection. A copied transport notice is not authentication.
-- Proactive text sends require this session's verified assignment, not a prior inbound request. Console transcripts are never automatically forwarded.
-- Telegram steering into a local-console task is rejected with a resend notice; ordinary busy text steers only Telegram-originated work.
-- Native connection acknowledgements, commands, update prompts, and attachment notices remain extension-controlled.
-- Working is explicitly controlled by the tool; omitted status removes it. Cleanup is best-effort on disconnect/network failure. Failed sends report uncertain delivery without automatic replay.
-
-## File attachments
-
-During a Telegram-originated request, ask Pi to send a generated or existing project file. The `telegram_send_file` tool uploads it as a native Telegram document, preserving the original bytes.
-
-`telegram_send_photo` is available for explicitly requested inline PNG/JPEG previews. Photos must be at most 10 MB, have width + height at most 10,000 pixels, and an aspect ratio at most 20:1. Actual image contents are decoded and validated before upload. Captions are optional plain text, up to 1,024 characters. Telegram may resize/compress photos; request document delivery for original quality. No automatic conversion, document fallback, or EXIF/GPS metadata removal is performed or promised.
-
-Both tools use the same project-file safeguards and request-bound destination. Cancellation and disconnect abort pending uploads; an interrupted network request may already have reached Telegram, so check the chat before retrying. Success is reported only after Telegram accepts the upload. Albums and automatic resizing are not supported.
-
-Safeguards include canonical paths restricted to the active project, blocked credential and repository-internal files (including configured global settings and temporary credential files), revalidation immediately before reading the attachment, Telegram's 50 MB cloud Bot API upload limit, and optional plain-text captions up to 1,024 characters.
-
-### Receiving files from Telegram
-
-Send a **document or photo** in the paired owner's private bot chat. A caption becomes a normal follow-up instruction with the saved file path. Caption text is not interpreted as a Telegram command or steering prefix. Without a caption, the agent is asked to acknowledge receipt and ask what you want done before inspecting it. Photos use Telegram's largest available size; send images as documents to preserve original bytes.
-
-Downloads show a **Downloading attachment…** acknowledgement, followed by **Received**, without a queued acknowledgement. Files are saved with unique sanitized names in `.pi/telegram-inbox/`, protected by an inbox `.gitignore`. Each file is limited to **20 MB** (the hosted Bot API download limit); the inbox is limited to **100 files / 100 MB**. Limits are enforced while streaming, not just from metadata. Files remain until you remove them locally; there is no automatic deletion. Interrupted partial downloads are removed.
-
-Only the stored owner can upload. The receiving connection binds the resulting agent request; a disconnect/transfer cancels pending downloads and cannot route them into a replacement session. Files are untrusted data, never automatically executed or extracted. The downloader rejects symbolic inbox paths and Git-tracked inbox files. File contents are not scanned for secrets or malware.
-
-One attachment can download per connection at a time. Send `/stop` to cancel that download. Additional attachments and ordinary instructions received during a download get an explicit resend notice rather than being silently dropped; albums, voice, audio and video messages are not supported yet. `/status` remains available during downloads. Reload and live document/photo reception tests remain pending.
-
-## Development
-
-```bash
-npm ci
-npm run validate
-npm audit --audit-level=moderate
-npm run pack:check
-```
-
-Run from source:
-
-```bash
-pi -e .
-```
-
-See [`docs/architecture.md`](docs/architecture.md) and [`docs/telegram-rich-messages.md`](docs/telegram-rich-messages.md) for implementation details.
-
-## Security
-
-Pi packages run with full system access. Review source before installation. Pi Telegram accepts only private text from the paired owner and never sends hidden reasoning or raw tool results to Telegram.
-
-Credential files contain plaintext tokens, not encrypted secrets. Protect them with appropriate OS permissions and secure backups. Bot chats are not end-to-end encrypted; public responses and requested attachments pass through Telegram. Startup messages use a single line: `Connected · ProjectName · IP`. They disclose the project name and an IP address to the paired owner; `/status` additionally includes the branch when available, hostname, and controls. Attachment path/filename checks are not a content-level secret scanner.
-
-Report vulnerabilities privately as described in [`SECURITY.md`](SECURITY.md).
-
-## License
-
-[MIT](LICENSE)
+- [User guide](docs/user-guide.md): published commands, session transfers, files, manager mode and private settings.
+- [Agent/tool guide](docs/agent-tools.md): explicit 0.6.0 API, optional skill and Thinking lifecycle.
+- [Development status](docs/development-status.md): exact source-test observations, known limits and contributor checks; no blanket platform/compatibility claim.
+- [Changelog](CHANGELOG.md) · [Security reporting](https://github.com/comput-sh/pi-telegram/blob/main/SECURITY.md) · [MIT license](LICENSE)

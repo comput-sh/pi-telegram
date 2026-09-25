@@ -97,103 +97,24 @@ test("reload is rejected with a direct reply while Pi is busy", async () => {
   }
 });
 
-test("public commentary replaces thinking with one evolving plain draft", async () => {
+test("explicit draft heartbeat stays plain and never creates implicit activity", async () => {
   const originalFetch = globalThis.fetch;
-  const requests: Array<{ method: string; body: Record<string, unknown> }> = [];
+  const requests: Array<{ method: string; body: any }> = [];
   globalThis.fetch = (async (input, init) => {
-    const method = String(input).split("/").at(-1)!;
-    requests.push({
-      method,
-      body: JSON.parse(String(init?.body)) as Record<string, unknown>,
-    });
-    const result = method.endsWith("Draft") ? true : { message_id: 1 };
-    return new Response(JSON.stringify({ ok: true, result }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
+    requests.push({ method: String(input).split("/").at(-1)!, body: JSON.parse(String(init?.body)) });
+    return new Response(JSON.stringify({ ok: true, result: { message_id: requests.length } }));
   }) as typeof fetch;
-
+  const connection = new TelegramSessionConnection("test-token", 42);
   try {
-    const connection = new TelegramSessionConnection("test-token", 42);
-    await connection.beginRichDraft();
-    await connection.setDraftActivity("read");
-    await new Promise((resolve) => setTimeout(resolve, 1_600));
-    await connection.streamCommentaryDraft("First public\ncomment");
-    await new Promise((resolve) => setTimeout(resolve, 1_600));
-    await connection.updateRichDraft("Latest public comment");
-    await connection.setDraftActivity("bash");
-    await new Promise((resolve) => setTimeout(resolve, 1_600));
-    const working = requests.at(-1)!;
-    assert.equal(working.method, "sendMessageDraft");
-    assert.match(String(working.body.text), /^Latest public comment\n\nRunning a command\.+$/);
-    await new Promise((resolve) => setTimeout(resolve, 5_100));
-    const refreshed = requests.at(-1)!;
-    assert.equal(refreshed.method, "sendMessageDraft");
-    assert.notEqual(refreshed.body.text, working.body.text);
-    assert.doesNotMatch(String(refreshed.body.text), /\u2060/);
-    await connection.streamRichDraft("Streaming public text");
-    await new Promise((resolve) => setTimeout(resolve, 1_600));
-    await connection.sendRichMessage("# Result\n\n| A | B |\n|---|---|\n| 1 | 2 |");
-
-    assert.equal(requests[0]?.method, "sendRichMessageDraft");
-    assert.equal(requests[0]?.body.can_stop, false);
-    const draftRequests = requests.filter((request) =>
-      request.method.endsWith("Draft"),
-    );
-    const initialDraftId = draftRequests[0]?.body.draft_id;
-    assert.ok(
-      draftRequests.every((request) => request.body.draft_id === initialDraftId),
-    );
-
-    const initialPayload = JSON.stringify(draftRequests[0]?.body.rich_message);
-    assert.match(initialPayload, /"type":"thinking"/);
-    assert.match(initialPayload, /"type":"custom_emoji"/);
-    const richDraftPayloads = draftRequests
-      .filter((request) => request.method === "sendRichMessageDraft")
-      .map((request) => JSON.stringify(request.body.rich_message));
-    assert.ok(richDraftPayloads.some((payload) => payload.includes("Reading files")));
-    assert.ok(
-      richDraftPayloads.every((payload) => !payload.includes("Running a command")),
-    );
-    assert.ok(
-      requests.every(
-        (request) =>
-          request.method !== "sendMessage" &&
-          request.method !== "editMessageText" &&
-          request.method !== "deleteMessage",
-      ),
-    );
-
-    const plainDrafts = draftRequests.filter(
-      (request) => request.method === "sendMessageDraft",
-    );
-    assert.ok(
-      plainDrafts.some((request) =>
-        String(request.body.text).startsWith("First public comment"),
-      ),
-    );
-    assert.ok(
-      plainDrafts.some((request) =>
-        String(request.body.text).startsWith("Latest public comment"),
-      ),
-    );
-    assert.ok(
-      plainDrafts.some((request) =>
-        String(request.body.text).startsWith("Streaming public text"),
-      ),
-    );
-    assert.deepEqual(requests.at(-1), {
-      method: "sendRichMessage",
-      body: {
-        chat_id: 42,
-        rich_message: {
-          markdown: "# Result\n\n| A | B |\n|---|---|\n| 1 | 2 |",
-        },
-      },
-    });
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    const { draftRef } = await connection.draft("start", { message: "Public progress" });
+    await new Promise(resolve => setTimeout(resolve, 5_100));
+    assert.equal(requests.length, 2);
+    assert.ok(requests.every(r => r.method === "sendMessageDraft"));
+    assert.equal(requests[0].body.draft_id, requests[1].body.draft_id);
+    assert.notEqual(requests[0].body.text, requests[1].body.text);
+    await connection.draft("finalize", { draftRef, message: "# Result" });
+    assert.deepEqual(requests.at(-1), { method: "sendRichMessage", body: { chat_id: 42, rich_message: { markdown: "# Result" } } });
+  } finally { await connection.stop(); globalThis.fetch = originalFetch; }
 });
 
 test("command menu is scoped to the Telegram owner chat", async () => {
@@ -276,7 +197,7 @@ test("sendDocument uploads a native Telegram document with an optional caption",
 test("oversized Rich Markdown is rejected rather than reformatted", async () => {
   const connection = new TelegramSessionConnection("test-token", 42);
   await assert.rejects(
-    connection.sendRichMessage("x".repeat(32_769)),
+    connection.post("x".repeat(32_769)),
     /must not exceed 32768 characters/,
   );
 });

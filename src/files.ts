@@ -56,7 +56,8 @@ function assertSafeRelativePath(relativePath: string): void {
     /^(?:id_rsa|id_dsa|id_ecdsa|id_ed25519)(?:\.pub)?$/i.test(fileName);
   const isCredentialFile =
     fileName === "local.settings.json" ||
-    fileName === "servicehost.credentials.json" ||
+    fileName === "credentials.json" ||
+    fileName.endsWith(".credentials.json") ||
     fileName === "pi-telegram.local.json" ||
     fileName === "pi-telegram.settings.json" ||
     /^pi-telegram\.local\.json\..*\.tmp$/.test(fileName) ||

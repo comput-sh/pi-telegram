@@ -15,8 +15,8 @@ test("typed answers or disconnects during a slow send cannot revive stale button
         if (String(url).endsWith("/sendRichMessage")) { entered(); await pending; }
         return new Response(JSON.stringify({ ok: true, result: { message_id: 10 } }));
       }) as typeof fetch;
-      const question = connection.askQuestion("Continue?", [{ label: "Yes", reply: "Continue" }]);
-      const rejected = assert.rejects(question, /superseded|cancelled/);
+      const question = connection.post("Continue?", [{ label: "Yes", reply: "Continue" }]);
+      const rejected = assert.rejects(question, /could not be confirmed/);
       await started;
       if (disconnect) await connection.stop();
       else await (connection as any).expireQuestion();
@@ -37,7 +37,7 @@ test("failed answer routing reports uncertainty without replaying the choice", a
     return new Response(JSON.stringify({ ok: true, result: { message_id: 10 } }));
   }) as typeof fetch;
   try {
-    await connection.askQuestion("Continue?", [{ label: "Yes", reply: "Continue" }]);
+    await connection.post("Continue?", [{ label: "Yes", reply: "Continue" }]);
     const data = requests[0].body.reply_markup.inline_keyboard[0][0].callback_data;
     const query = { id: "q", data, from: { id: 42, is_bot: false }, message: { message_id: 10, chat: { id: 42, type: "private" } } };
     let calls = 0;
@@ -45,6 +45,7 @@ test("failed answer routing reports uncertainty without replaying the choice", a
     await (connection as any).handleQuestionButton(query, route);
     await (connection as any).handleQuestionButton(query, route);
     assert.equal(calls, 1);
+    await new Promise(resolve => setImmediate(resolve)); // Notice is independent of admission.
     assert.ok(requests.some(r => r.method === "sendMessage" && r.body.text.includes("Could not confirm delivery")));
     assert.ok(!JSON.stringify(requests).includes("private error"));
   } finally { await connection.stop(); globalThis.fetch = original; }
@@ -64,9 +65,9 @@ test("questions use Rich Markdown and one-use owner-bound buttons", async () => 
   const answers: any[] = [];
   const click = (query: any) => (connection as any).handleQuestionButton(query, (message: any) => { answers.push(message); });
   try {
-    await assert.rejects(connection.askQuestion("?", []), /1–8/);
-    await assert.rejects(connection.askQuestion("?", [{ label: "Yes", reply: "one" }, { label: " yes ", reply: "two" }]), /distinct/);
-    await connection.askQuestion("**Implement?**", [{ label: "Yes", reply: "Implement the proposal" }, { label: "Discuss", reply: "!discuss first" }]);
+    await assert.rejects(connection.post("?", []), /1–8/);
+    await assert.rejects(connection.post("?", [{ label: "Yes", reply: "one" }, { label: " yes ", reply: "two" }]), /distinct/);
+    await connection.post("**Implement?**", [{ label: "Yes", reply: "Implement the proposal" }, { label: "Discuss", reply: "!discuss first" }]);
     const sent = requests.find(r => r.method === "sendRichMessage");
     assert.equal(sent.body.rich_message.markdown, "**Implement?**");
     const rows = sent.body.reply_markup.inline_keyboard;
@@ -84,14 +85,14 @@ test("questions use Rich Markdown and one-use owner-bound buttons", async () => 
     assert.match(answers[0].text, /Implement\?/);
     assert.match(answers[0].text, /!discuss first/);
     assert.ok(requests.some(r => r.method === "editMessageReplyMarkup" && r.body.reply_markup.inline_keyboard.length === 0));
-    await connection.askQuestion("Again?", [{ label: "No", reply: "No" }]);
+    await connection.post("Again?", [{ label: "No", reply: "No" }]);
     await click(base);
     assert.equal(answers.length, 1);
     const current = requests.filter(r => r.method === "sendRichMessage").at(-1);
     (connection as any).question.expires = 0;
     await click({ ...base, message: { ...base.message, message_id: 2 }, data: current.body.reply_markup.inline_keyboard[0][0].callback_data });
     assert.equal(answers.length, 1);
-    await connection.askQuestion("Last?", [{ label: "Yes", reply: "Yes" }]);
+    await connection.post("Last?", [{ label: "Yes", reply: "Yes" }]);
     await (connection as any).expireQuestion();
     assert.equal((connection as any).question, undefined);
     await connection.stop();

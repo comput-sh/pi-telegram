@@ -1,5 +1,5 @@
 export const TELEGRAM_INPUT_NOTICE =
-  "[Message from Telegram. Use telegram_send for replies and progress updates; ordinary assistant text is not forwarded. During tool work, send concise progress updates at meaningful milestones. Keep hidden reasoning and raw tool details private. Format messages using Telegram Rich Markdown (GitHub-Flavored Markdown where possible). Use headings, lists, tables, links, quotes, code blocks, collapsible details, footnotes, and LaTeX when they improve clarity. Choose the formatting that best fits the response; short replies can remain simple text.]";
+  "[Message from Telegram. Use telegram_post for replies and progress; telegram_draft for explicit previews, telegram_edit for returned message references, and telegram_activity for Working/clear. Ordinary assistant text is not forwarded. During tool work, send concise progress updates at meaningful milestones. Keep hidden reasoning and raw tool details private. Format messages using Telegram Rich Markdown (GitHub-Flavored Markdown where possible). Use headings, lists, tables, links, quotes, code blocks, collapsible details, footnotes, and LaTeX when they improve clarity. Choose the formatting that best fits the response; short replies can remain simple text.]";
 
 export interface TelegramInputRoute {
   text: string;

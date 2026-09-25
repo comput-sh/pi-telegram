@@ -2,7 +2,7 @@
 
 ## Reporting a vulnerability
 
-Please do not open a public issue for credential exposure, authorization bypasses, token leakage, or other security-sensitive findings. Use GitHub's **Report a vulnerability** option on the repository's Security tab if available. Otherwise, use a private contact method listed by the maintainer at <https://github.com/mbundgaard>. If neither is available, request a private reporting channel without posting sensitive details.
+Please do not open a public issue for credential exposure, authorization bypasses, token leakage, or other security-sensitive findings. Use GitHub's **Report a vulnerability** option on the repository's Security tab if available. Otherwise, use a private contact method listed by the maintainer at <https://github.com/comput-sh>. If neither is available, request a private reporting channel without posting sensitive details.
 
 Include the affected version, impact, and minimal reproduction details. Do not include live Telegram bot tokens or owner identifiers.
 

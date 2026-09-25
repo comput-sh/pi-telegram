@@ -160,6 +160,36 @@ export async function configureManager(
   });
 }
 
+// Usernames and pairing codes are validated ASCII. Wrap rather than truncate:
+// even a terminal narrower than the code must retain every character.
+export function renderPairingInstructions(
+  username: string,
+  code: string | undefined,
+  width: number,
+): string[] {
+  if (width < 1) return [];
+  const paragraphs = code
+    ? [
+        "Open the private Telegram chat:",
+        `@${username}`,
+        "Press Start, then send this code as one line:",
+        code,
+      ]
+    : ["Preparing private owner pairing for", `@${username}`];
+  paragraphs.push("Esc: cancel pairing", "Expires after three minutes.");
+  return paragraphs.flatMap((text) => {
+    const lines: string[] = [];
+    while (text.length > width) {
+      const space = text.lastIndexOf(" ", width);
+      const end = space > 0 ? space : width;
+      lines.push(text.slice(0, end));
+      text = text.slice(end).trimStart();
+    }
+    if (text) lines.push(text);
+    return lines;
+  });
+}
+
 export async function pairProjectBotOwner(
   ctx: ExtensionContext,
   token: string,
@@ -176,14 +206,14 @@ export async function pairProjectBotOwner(
   let failure: unknown;
   const paired = await ctx.ui.custom<ConfiguredProjectBot | undefined>(
     (tui, _theme, _keys, done) => {
-      let label = `Preparing private owner pairing for @${username}…`;
+      let pairingCode: string | undefined;
       // Close only after polling settles, so callers cannot release the lease
       // while the cancelled getUpdates request is still in flight.
       void pairManualBot(
         token,
         username,
         (code) => {
-          label = `Open @${username}, press Start, and send: ${code}`;
+          pairingCode = code;
           tui.requestRender();
         },
         combined,
@@ -192,10 +222,8 @@ export async function pairProjectBotOwner(
         done(undefined);
       });
       return {
-        render: (width: number) => [
-          truncate(label, width),
-          truncate("Esc: cancel pairing • expires after three minutes", width),
-        ],
+        render: (width: number) =>
+          renderPairingInstructions(username, pairingCode, width),
         handleInput: (data: string) => {
           if (data === "\x1b" || data === "\x03")
             controller.abort(new Error("Telegram pairing cancelled."));

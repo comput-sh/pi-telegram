@@ -156,7 +156,7 @@ test("raw fetch errors cannot expose token-bearing URLs", async () => {
   }
 });
 
-test("background draft failures surface a rate-limited warning", async () => {
+test("background control failures surface a rate-limited warning", async () => {
   const previous = globalThis.fetch;
   let fail = false;
   let warnings = 0;
@@ -170,12 +170,11 @@ test("background draft failures surface a rate-limited warning", async () => {
     },
   });
   try {
-    await connection.beginRichDraft();
     fail = true;
-    await connection.streamCommentaryDraft("public progress");
-    await new Promise((resolve) => setTimeout(resolve, 1700));
+    connection.sendControlNotice("control notice");
+    await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(warnings, 1);
-    await connection.streamCommentaryDraft("later public progress");
+    connection.sendControlNotice("later control notice");
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(warnings, 1);
   } finally {

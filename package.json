@@ -1,6 +1,6 @@
 {
   "name": "@comput/pi-telegram",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Use Telegram as a native frontend for live Pi coding-agent sessions.",
   "license": "MIT",
   "author": "Martin Bundgaard",
@@ -12,17 +12,21 @@
     "telegram",
     "coding-agent"
   ],
-  "homepage": "https://github.com/mbundgaard/PiTelegram#readme",
+  "homepage": "https://github.com/comput-sh/pi-telegram#readme",
   "bugs": {
-    "url": "https://github.com/mbundgaard/PiTelegram/issues"
+    "url": "https://github.com/comput-sh/pi-telegram/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mbundgaard/PiTelegram.git"
+    "url": "git+https://github.com/comput-sh/pi-telegram.git"
   },
   "files": [
     "src/**/*.ts",
+    "skills/pi-telegram/**/*.md",
     "README.md",
+    "docs/user-guide.md",
+    "docs/agent-tools.md",
+    "docs/development-status.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
@@ -31,11 +35,14 @@
     "provenance": true
   },
   "engines": {
-    "node": ">=20.3"
+    "node": ">=20.9.0"
   },
   "pi": {
     "extensions": [
       "./src/index.ts"
+    ],
+    "skills": [
+      "./skills/pi-telegram"
     ]
   },
   "scripts": {
