@@ -2,7 +2,19 @@
 
 [Onboarding](../README.md) · [0.6.0 tool contracts](agent-tools.md) · [Changelog](../CHANGELOG.md)
 
-## Pre-publication checkpoint — 2026-09-25
+## Released 0.6.0 — verified checkpoint
+
+Public npm `latest` is **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`. CI **36181107612** and Trusted Publishing run **36181188483** succeeded. The earlier attempt **36180596310** failed validation; its publication step was skipped.
+
+Independent download verification found **38 files**, all byte-identical to that release commit. SHA-1 is `e0f8a6c455c65c91386a3e03c5ae11cc6e2758d3`. Computed SHA-512 matches registry integrity `sha512-BlLloQEmVOd8DgktFvOVVntA9cOGto26JlfRIIzx4JxLI929d5Y+s2/9Y1+mGGmYDgG1HLnmYzgCMfXhLertsg==` and the decoded SLSA subject digest. The SLSA v1 payload identifies `comput-sh/pi-telegram`, `.github/workflows/publish.yml`, the exact commit and run **36181188483**, attempt **1**. This verifies hashes and decoded payload linkage, not an independent DSSE/Sigstore certificate-chain/Rekor verification.
+
+Final validation passed typecheck and **195 tests** (none skipped) under Node22/npm10 and isolated Node24/npm12, audit with zero vulnerabilities, pack38 and diff checks. The additional test-only fix handles npm12's name-keyed pack JSON alongside the earlier array format, rejects malformed/multiple/empty package results and preserves all package safety assertions. No runtime/dependency change was needed.
+
+The Trusted Publisher mapping is now verified working through actual publication. Installed/shared npm remains **0.5.0**: source testing and the user-reported reload are not an npm installation. This release did not install or reload anything. Live observations and accepted limitations below remain scoped; the original busy-console guard is not fixed.
+
+The immutable published tarball contains the pre-publication documentation snapshot. This post-publication checkpoint is a later documentation-only update, not a new package or permission to republish 0.6.0.
+
+## Historical pre-publication checkpoint — 2026-09-25
 
 At this checkpoint, candidate package metadata is **0.6.0**; publication is pending final checks and CI. Public npm and the shared npm installation remain **0.5.0**. Development source is activated in a single testing session; this is not a new npm installation or publication. New Post/Draft/Edit/Activity tools, Thinking lifecycle, typing diagnostic, omitted-reply reminder and bundled usage skill are unreleased. Do not instruct npm 0.5.0 users to call those tools.
 
@@ -38,13 +50,13 @@ Before the onboarding work, independent lifecycle validation passed typecheck an
 
 The extension's own Node floor is now **20.9.0**, reflecting `sharp` 0.35.4, but that is not a claim current Pi runs on Node 20. The examined Pi versions 0.84.4 (test SDK) and 0.87.1 require **Node 22.19.0 or later**. Use the requirements of your installed Pi as well. Standard Pi peer ranges remain `*`; they are not a tested compatibility matrix. No new OS/architecture support claim follows from metadata or mocks.
 
-## 0.6.0 release checklist
+## Release verification and future checks
 
-Versioned candidate validation passed typecheck, **194 tests** (none skipped), audit with **zero vulnerabilities**, package dry-run **38 files**, and diff checks. Independent candidate review and release-commit CI are separate gates.
+The original candidate passed 194 tests; the npm12 pack-parser regression raised final validation to **195 passing tests**. Independent review, release-commit CI, publication and artifact checks succeeded as recorded above.
 
 - Scope: breaking explicit Post/Draft/Edit/Activity API replacing `telegram_send`, Thinking lifecycle, omitted-reply reminder, requested layouts, optional skill, onboarding and transport isolation. See [migration](agent-tools.md#migration-from-050) and [release notes](../CHANGELOG.md#060).
-- The owner authorized release **0.6.0** after final checks and CI. Candidate metadata is bumped; only the designated release actor may stage, commit, push and dispatch publication. Preparation does not install or reload.
-- The owner confirmed saving npm Trusted Publisher owner **comput-sh**, repository **pi-telegram**, workflow **publish.yml**, blank environment. This confirms configuration only; publication and provenance from the transferred repository remain unverified.
+- The owner-authorized **0.6.0** release is complete. Installation/reload remains separate; future version bumps, commits, pushes and publications require their own authorization.
+- Trusted Publisher owner **comput-sh**, repository **pi-telegram**, workflow **publish.yml**, blank environment is verified working by the successful release; artifact hashes and decoded SLSA linkage are recorded above.
 - Before any authorized release, rerun typecheck/tests, audit, package allowlist and diff checks on the final versioned tree. Exclude local artifacts, hidden runtime state and credentials; never stage the whole worktree indiscriminately. Current source checks are evidence, not CI on a release commit.
 - Single-session observations after the user-reported reload include direct Thinking handoff and the flows listed above. Two-session testing was explicitly declined and accepted as untested; host cancellation/adverse-network behavior remain pending. Do not label the original steering refusal fixed.
 - After separate commit/push/publication authorization, verify workflow success, public registry version/tarball and exact commit/workflow provenance. Do not retry publication merely because registry visibility lags. Installation/reload and live verification are separate operations.

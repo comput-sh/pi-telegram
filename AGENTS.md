@@ -11,17 +11,17 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## 0.6.0 release candidate
+## 0.6.0 released
 
-- User authorized the 0.6.0 release after final checks and CI. Package and lock root versions are now 0.6.0; publication remains pending. Coordinator alone stages, commits, pushes and publishes. No installation/reload is part of candidate preparation.
+- Authorized 0.6.0 publication succeeded and public npm latest is verified. The exact release commit and artifact evidence are recorded in the current checkpoint below. Shared npm installation remains 0.5.0; source testing/reload is not package installation. This publication did not install or reload anything.
 - After a user-reported reload, single-session Post/Edit/Draft update/finalize/Working clear and direct Thinking start → handoff → update → finalize were reported “perfect”. Inline callback placement and both choices disabled were “perfect”; compact tables/expandable quotes were “nice”; the omitted-reply reminder actually fired and posted. Loaded source path was not independently verified. This does not repeat the row-callback test or prove exact timer/no-loop behavior.
 - The owner declined two-session testing and accepted it as an untested release limitation. Host cancellation, adverse-network behavior and skill adherence remain unverified. No cross-extension bridge or replacement steering fix is included; the original busy-console guard remains.
-- npm publisher mapping was owner-confirmed saved for comput-sh/pi-telegram, publish.yml, blank environment; new-repository publication/provenance still await verification.
-- Versioned candidate checks passed: typecheck, 194 tests (none skipped), audit zero vulnerabilities, package dry-run38 files and diff check. Independent candidate review and release-commit CI remain separate gates.
+- Trusted Publisher mapping comput-sh/pi-telegram, publish.yml, blank environment is verified working by successful publication. Registry hashes and decoded SLSA linkage were independently checked; independent DSSE/certificate-chain/Rekor verification was not performed.
+- Final checks passed typecheck and 195 tests (none skipped), audit zero vulnerabilities, package dry-run38 files and diff check on Node22/npm10 and isolated Node24/npm12. A test-only npm pack JSON compatibility fix supports strict single-package array and name-keyed formats without weakening package safety checks; no runtime/dependency change. Release-commit CI and publication validation succeeded.
 
-## Historical source-development checkpoints (superseded by candidate evidence above)
+## Historical source-development checkpoints (superseded by release evidence above)
 
-- The proposed cross-extension steering integration was withdrawn and removed before activation. Original authenticated-request routing and unrelated-console protection remain; no replacement design is implemented. The local Telegram-only source launcher remains unexecuted. Fresh rollback validation passed typecheck, 194 tests (none skipped), pack dry-run38 files and diff checks. Audit covered all22 production modules: only own Telegram/configuration/lifecycle, ordinary Pi host APIs, Git safeguards/metadata and own npm updates remain. Generic case-insensitive credentials.json / *.credentials.json upload protection replaces a product-specific basename without narrowing protection. Independent rollback review approved: all22 production modules and30 test files audited; no peer-extension awareness remains in source or distributed guidance. The original busy-console guard is restored. Loaded copies remain unchanged until a separately authorized restart; prior scoped live observations do not verify this rollback.
+- The proposed cross-extension steering integration was withdrawn and removed from source. Original authenticated-request routing and unrelated-console protection remain; no replacement design is implemented. The local Telegram-only source launcher remains unexecuted. Fresh rollback validation passed typecheck, 194 tests (none skipped), pack dry-run38 files and diff checks. Audit covered all22 production modules: only own Telegram/configuration/lifecycle, ordinary Pi host APIs, Git safeguards/metadata and own npm updates remain. Generic case-insensitive credentials.json / *.credentials.json upload protection replaces a product-specific basename without narrowing protection. Independent rollback review approved: all22 production modules and30 test files audited; no peer-extension awareness remains in source or distributed guidance. The original busy-console guard is restored. Loaded copies remain unchanged until a separately authorized restart; prior scoped live observations do not verify this rollback.
 
 - Request-driven advanced layouts: `telegram_post` now takes exactly one of Rich Markdown message or narrow literal embedded content; content excludes top-level keyboard buttons. Paragraph text/button parts and button rows share the existing one pending question, owner/nonce/message/one-use safeguards; no raw callbacks/payload or extra approval authority. Limits are16 blocks/32 paragraph parts/8 total choices/4096 derived visible characters. Existing keyboard defaults remain unchanged; advanced embedded buttons, compact tables and expandable quotes are discoverable but only used on explicit request/preference, not enabled as a mode. HTML table/quote recipes use the unchanged message field; formatted HTML plus embedded content is outside the initial subset. Builder, Transport and independent Reviewer validation passed: typecheck and 193 tests (none skipped), pack dry-run (38 intended files), and diff check; no new dependencies. Independent advanced-layout review approved. The owner subsequently observed inline/row button rendering, clicks and disabled states, compact tables and expandable quotes on an updated client using prior loaded source; this does not verify the post-rollback checkout. These are unreleased source changes; shared/public npm remains 0.5.0.
 
@@ -118,7 +118,18 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 ## Current handoff / release checkpoint
 
-- Source and public npm `latest`: **0.5.0**, released from `6275bfdfbe6d47778bf12b8f20331c9c1ca3e96e`.
+- Source and public npm `latest`: **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`.
+- CI **36181107612** and Trusted Publishing **36181188483** succeeded. Earlier run **36180596310** failed validation and its publish step was skipped; it did not publish a competing artifact.
+- Independent download verification: all **38 files** byte-match the release commit. SHA-1: `e0f8a6c455c65c91386a3e03c5ae11cc6e2758d3`. SHA-512 matches registry integrity and the decoded SLSA subject digest.
+- Registry SHA-512 integrity: `sha512-BlLloQEmVOd8DgktFvOVVntA9cOGto26JlfRIIzx4JxLI929d5Y+s2/9Y1+mGGmYDgG1HLnmYzgCMfXhLertsg==`.
+- Decoded SLSA v1 identifies `comput-sh/pi-telegram`, `.github/workflows/publish.yml`, the exact release commit and run **36181188483**, attempt **1**. Hashes and payload linkage were checked, not an independent DSSE/Sigstore certificate-chain/Rekor verification.
+- Final validation: typecheck, **195 tests** (none skipped), audit zero vulnerabilities, pack38 and diff checks; Node22/npm10 and Node24/npm12 passed. The npm12 fix is test-only and retains strict package safety assertions.
+- Installed/shared npm remains **0.5.0**. Single-session source observations are scoped above; two-session testing was declined and accepted as untested, and host cancellation/adverse-network limitations remain. The original busy-console guard is unchanged.
+- The published tarball includes its pre-publication documentation snapshot. This post-publication checkpoint is documentation-only and does not alter that immutable artifact. Do not republish 0.6.0. Keep artifacts and hidden local runtime state out of commits/packages.
+
+### Historical 0.5.0 checkpoint
+
+- Source and public npm `latest` at that checkpoint: **0.5.0**, released from `6275bfdfbe6d47778bf12b8f20331c9c1ca3e96e`.
 - Trusted Publishing run **35530702310** succeeded. Public registry metadata and SLSA attestation identify that exact commit and `.github/workflows/publish.yml`; the attestation names run attempt 1.
 - Downloaded tarball SHA-1: `57ab82707b02434d71890f560e78f869aa336628`; 23 files. SHA-512 matches registry integrity and the SLSA subject digest.
 - Fresh release validation passed: `npm ci`, typecheck and **116 tests**, audit (zero vulnerabilities), pack check (23 intended files), and diff check; workflow CI validation succeeded.
@@ -165,9 +176,9 @@ Last verified against release commit `0bfe2ae`:
 
 ### Next steps and future releases
 
-1. Complete real Telegram two-session smoke testing; it was not performed as part of npm publication.
+1. Two-session smoke testing remains unperformed; the owner declined it and accepted that release limitation. Perform it only if separately requested.
 2. Review removal/revocation of any old local npm publishing credentials through secure local/account UI. Never inspect or print token values in model context. OIDC publication no longer requires a local npm token.
-3. The Trusted Publisher mapping is GitHub owner `comput-sh`, repository `pi-telegram`, workflow filename `publish.yml`, no GitHub environment name. The owner has confirmed saving this mapping in npm; successful publication using this mapping remains **unverified** until a separately authorized release succeeds.
+3. The Trusted Publisher mapping is GitHub owner `comput-sh`, repository `pi-telegram`, workflow filename `publish.yml`, no GitHub environment name. Successful 0.6.0 publication verified this mapping; exact registry/artifact and decoded provenance linkage are recorded above.
 4. For an authorized future release, bump the version, validate, push, and dispatch `.github/workflows/publish.yml`. Do not republish 0.2.0, 0.2.1, 0.2.2, 0.2.3, 0.2.4, or 0.2.5. This workflow also runs on a published GitHub release; avoid duplicate publication triggers.
 5. Verify workflow success, public registry version, and provenance before updating this checkpoint. The published 0.2.5 tarball additionally includes reconnect recovery and phase-independent public-text streaming; this post-publication checkpoint update is documentation-only.
 
