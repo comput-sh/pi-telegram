@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, realpath } from "node:fs/promises";
+import { mkdtemp, rm, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -19,6 +19,7 @@ import {
 import { acquireTelegramRuntimeLease } from "../src/runtime-lease.ts";
 import { stageAssignment } from "../src/assignment.ts";
 import { wrapTelegramInput } from "../src/routing.ts";
+import { FEEDBACK_ENDPOINT } from "../src/feedback-endpoint.ts";
 
 // Exercise the registered extension events/commands, not just helper functions.
 type Handler = (event: any, ctx: any) => any;
@@ -183,6 +184,29 @@ async function fixture(
     await rm(cwd, { recursive: true, force: true });
   }
 }
+
+test("disabled native feedback never solicits text, submits externally or enters the agent", async () =>
+  fixture(async (cwd, network) => {
+    assert.equal(FEEDBACK_ENDPOINT, undefined, "production submission awaits the owner's reviewed endpoint");
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1, text: "/feedback", chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false } } });
+    const fetch = globalThis.fetch;
+    const forcedReplies: unknown[] = [];
+    globalThis.fetch = (async (url, init) => {
+      assert.ok(String(url).startsWith("https://api.telegram.org/") || String(url).startsWith("https://registry.npmjs.org/"), "no feedback endpoint network call");
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      if (body.reply_markup?.force_reply) forcedReplies.push(body);
+      return fetch(url, init);
+    }) as typeof fetch;
+    const pi = harness(cwd);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !network.messages.some(text => /feedback.*(?:unavailable|not available)/i.test(text)); i++) await new Promise(resolve => setTimeout(resolve, 10));
+      assert.ok(network.messages.some(text => /feedback.*(?:unavailable|not available)/i.test(text)));
+      assert.deepEqual(forcedReplies, []);
+      assert.deepEqual(pi.sent, [], "no Pi input, receipts or reminder candidate can originate from feedback");
+    } finally { await pi.emit("session_shutdown"); }
+  }));
 
 test("successful manual pairing transfers its lease to the connected runtime", async () =>
   fixture(async (cwd, network) => {
@@ -803,7 +827,7 @@ test("inbound requests are delivered without automatic replies; telegram_post re
     }
   }));
 
-for (const input of ["normal text", "!literal text", "!!literal text"]) {
+for (const input of ["normal text", "!literal text", "!!literal text", "/steer explicit request"]) {
   test(`text ${JSON.stringify(input)} starts normally when idle and steers Telegram work without queued notices`, async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
@@ -829,8 +853,9 @@ for (const input of ["normal text", "!literal text", "!!literal text"]) {
       await pi.emit("session_start");
       for (let i = 0; i < 100 && !deliver; i++) await new Promise(r => setTimeout(r, 10));
       assert.equal(pi.sent.length, 1);
-      assert.equal(pi.deliveries[0]?.deliverAs, "followUp");
-      assert.ok(pi.sent[0]!.startsWith(`${wrapTelegramInput(input)}\n\n[Pi Telegram request: `));
+      assert.equal(pi.deliveries[0]?.deliverAs, input.startsWith("/steer ") ? "steer" : "followUp");
+      const expected = input.startsWith("/steer ") ? input.slice(7) : input;
+      assert.ok(pi.sent[0]!.startsWith(`${wrapTelegramInput(expected)}\n\n[Pi Telegram request: `));
       const text = pi.sent[0]!;
       await pi.emit("input", { text, source: "extension" });
       await pi.emit("message_start", { message: { role: "user", content: text } });
@@ -840,7 +865,7 @@ for (const input of ["normal text", "!literal text", "!!literal text"]) {
       for (let i = 0; i < 100 && pi.sent.length < 2; i++) await new Promise(r => setTimeout(r, 10));
       assert.equal(pi.sent.length, 2);
       assert.equal(pi.deliveries[1]?.deliverAs, "steer");
-      assert.ok(pi.sent[1]!.startsWith(`${wrapTelegramInput(input)}\n\n[Pi Telegram request: `));
+      assert.ok(pi.sent[1]!.startsWith(`${wrapTelegramInput(expected)}\n\n[Pi Telegram request: `));
       assert.ok(!network.messages.some(text => text.includes("Queued")));
       assert.ok(!network.calls.includes("sendRichMessageDraft"));
     } finally { await pi.emit("session_shutdown"); }
@@ -892,31 +917,90 @@ test("busy button replies remain authenticated follow-ups without queued notices
   }));
 
 for (const input of ["change direction", "!change direction", "/steer change direction", "!!literal bang"]) {
-  test(`busy console work rejects Telegram input ${JSON.stringify(input)} with a resend notice`, async () =>
+  test(`busy console input ${JSON.stringify(input)} becomes a trusted follow-up only when its new turn begins`, async () =>
   fixture(async (cwd, network) => {
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
-    network.inbound.push({
-      update_id: 1,
-      message: {
-        message_id: 1,
-        text: input,
-        chat: { id: 42, type: "private" },
-        from: { id: 42, is_bot: false },
-      },
-    });
+    await writeFile(join(cwd, "public.txt"), "public report");
+    const update = (id: number, text: string) => ({ update_id: id, message: {
+      message_id: id, text, chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false },
+    } });
+    network.inbound.push(update(1, input));
+    const fetch = globalThis.fetch;
+    let deliver: ((response: Response) => void) | undefined;
+    let uploads = 0;
+    globalThis.fetch = (async (url, init) => {
+      if (String(url).endsWith("/sendDocument")) {
+        uploads++;
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 900 } }));
+      }
+      if (String(url).endsWith("/getUpdates") && JSON.parse(String(init?.body)).offset >= 2) {
+        return new Promise<Response>((resolve, reject) => {
+          deliver = resolve;
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true });
+        });
+      }
+      return fetch(url, init);
+    }) as typeof fetch;
+    const push = async (id: number, text: string) => {
+      for (let i = 0; i < 100 && !deliver; i++) await new Promise(r => setTimeout(r, 10));
+      assert.ok(deliver);
+      const send = deliver; deliver = undefined;
+      send(new Response(JSON.stringify({ ok: true, result: [update(id, text)] })));
+      for (let i = 0; i < 100 && !deliver; i++) await new Promise(r => setTimeout(r, 10));
+    };
     const pi = harness(cwd);
     pi.setIdle(false);
     try {
       await pi.emit("session_start");
-      for (let i = 0; i < 100 && !network.messages.some(text => text.includes("Please resend")); i++) await new Promise(r => setTimeout(r, 10));
-      assert.equal(pi.sent.length, 0);
-      assert.ok(network.messages.includes("Cannot steer a local-console task from Telegram. Please resend when that task finishes."));
-      assert.ok(!network.messages.some(text => text.includes("Queued")));
-    } finally {
-      await pi.emit("session_shutdown");
-    }
+      for (let i = 0; i < 100 && !deliver; i++) await new Promise(r => setTimeout(r, 10));
+      assert.equal(pi.sent.length, 1);
+      assert.equal(pi.deliveries[0]?.deliverAs, "followUp");
+      const text = pi.sent[0]!;
+      const expected = input.startsWith("/steer ") ? input.slice(7) : input;
+      assert.ok(text.startsWith(`${wrapTelegramInput(expected)}\n\n[Pi Telegram request: `));
+      // The real host invokes input before queueing; it does not begin this user
+      // message until console tool calls/steering have finished.
+      await pi.emit("input", { text, source: "extension" });
+      await assert.rejects(pi.tool("telegram_send_file", { path: "public.txt" }), /current Telegram-originated request/);
+      await push(2, "/stop");
+      assert.equal(pi.aborts(), 0, "queued/admitted Telegram text does not grant console Stop authority");
+      assert.equal(uploads, 0);
+      assert.equal(pi.sent.length, 1, "no automatic acknowledgement or model reply");
+      await pi.emit("turn_end", { message: { role: "assistant", content: [] } });
+      await pi.emit("message_start", { message: { role: "user", content: text } });
+      await pi.tool("telegram_send_file", { path: "public.txt" });
+      assert.equal(uploads, 1, "only the begun authenticated follow-up has file authority");
+      await push(3, "Continue this Telegram turn");
+      assert.equal(pi.sent.length, 2);
+      assert.equal(pi.deliveries[1]?.deliverAs, "steer", "active Telegram work still accepts normal steering");
+      assert.ok(!network.messages.some(text => /Cannot steer|Please resend|Queued/.test(text)));
+    } finally { await pi.emit("session_shutdown"); }
   }));
 }
+
+test("a queued console follow-up retired by disconnect cannot acquire replacement-bot authority", async () =>
+  fixture(async (cwd, network) => {
+    await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
+    network.inbound.push({ update_id: 1, message: { message_id: 1, text: "Later request", chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false } } });
+    const pi = harness(cwd);
+    pi.setIdle(false);
+    try {
+      await pi.emit("session_start");
+      for (let i = 0; i < 100 && !pi.sent.length; i++) await new Promise(r => setTimeout(r, 10));
+      assert.equal(pi.deliveries[0]?.deliverAs, "followUp");
+      const queued = pi.sent[0]!;
+      await pi.emit("input", { text: queued, source: "extension" });
+      await pi.emit("session_shutdown");
+      await saveProjectSettings(cwd, { version: 2, bots: [bot("222")] });
+      await pi.emit("session_start");
+      // Already-admitted host queue entries may surface after replacement.
+      await pi.emit("message_start", { message: { role: "user", content: queued } });
+      await assert.rejects(pi.tool("telegram_send_file", { path: "public.txt" }), /current Telegram-originated request/);
+      await assert.rejects(pi.tool("telegram_post", { message: "Must not reach the replacement bot" }), /No ready Telegram destination/);
+      assert.equal(network.calls.filter(method => method === "sendRichMessage").length, 0);
+      assert.equal(pi.aborts(), 0);
+    } finally { await pi.emit("session_shutdown"); }
+  }));
 
 test("a forged transport prefix does not send local assistant output", async () =>
   fixture(async (cwd, network) => {

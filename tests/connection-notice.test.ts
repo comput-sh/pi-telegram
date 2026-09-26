@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { ConnectionManager } from "../src/connection-manager.ts";
 import { saveProjectSettings } from "../src/config.ts";
 
-async function fixture(work: (f: any) => Promise<void>) {
+async function fixture(work: (f: any) => Promise<void>, feedbackEndpoint?: string) {
   const cwd = await mkdtemp(join(tmpdir(), "pi-notice-"));
   const previousFetch = globalThis.fetch, previousSettings = process.env.PI_TELEGRAM_SETTINGS;
   process.env.PI_TELEGRAM_SETTINGS = join(cwd, "global", "settings.json");
@@ -14,7 +14,7 @@ async function fixture(work: (f: any) => Promise<void>) {
   const calls: string[] = [], warnings: string[] = [];
   const ctx = { cwd, sessionManager: { getSessionId: () => "main" }, ui: { setStatus() {}, notify: (text: string) => warnings.push(text), theme: { fg: (_: string, text: string) => text } } } as any;
   let connected = 0;
-  const manager = new ConnectionManager({ input() {}, canStop: () => false, stopTask() {}, disconnected() {}, reload: () => false, connected: () => { connected++; }, version: "test" });
+  const manager = new ConnectionManager({ input() {}, canStop: () => false, stopTask() {}, disconnected() {}, reload: () => false, connected: () => { connected++; }, version: "test", feedbackEndpoint });
   let handler: (method: string, signal: AbortSignal) => Promise<Response | undefined> = async () => undefined;
   const ok = (result: unknown) => new Response(JSON.stringify({ ok: true, result }));
   globalThis.fetch = (async (url, init) => {
@@ -43,6 +43,17 @@ async function fixture(work: (f: any) => Promise<void>) {
     await rm(cwd, { recursive: true, force: true });
   }
 }
+
+test("feedback wiring retains trusted bot identity while disabled and uses the loaded version when configured", async () => {
+  for (const endpoint of [undefined, "https://feedback.example.invalid/submit"]) {
+    await fixture(async ({ manager, bot, ctx }: any) => {
+      assert.equal(await manager.connect(bot, ctx, new AbortController().signal), true);
+      const options = manager.connection.options;
+      assert.equal(options.botId, Number(bot.id));
+      assert.deepEqual(options.feedback, endpoint === undefined ? undefined : { endpoint, version: "test" });
+    }, endpoint);
+  }
+});
 
 test("slow menu APIs cannot block Connected or startup completion; disconnect aborts menu work", async () => {
   for (const slowMethod of ["setMyCommands", "setChatMenuButton"]) {

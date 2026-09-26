@@ -19,6 +19,7 @@ import { runningPackage, latestVersion, newerVersion, installPrefix, installUpda
 import type { TelegramSessionConnection } from "./telegram.ts";
 import { receiveProjectAttachment } from "./incoming-files.ts";
 import { reconnectAssignedSession } from "./reconnect.ts";
+import { FEEDBACK_ENDPOINT } from "./feedback-endpoint.ts";
 
 const RELEASE_NOTES_URL = "https://github.com/comput-sh/pi-telegram/blob/main/CHANGELOG.md";
 
@@ -65,19 +66,12 @@ export default function piTelegram(pi: ExtensionAPI): void {
       const routed = forceFollowUp ? { text, deliverAs: "followUp" as const } : forceSteer
         ? { text, deliverAs: "steer" as const }
         : routeTelegramInput(text, !ctx.isIdle());
-      // Steering a console task must not cause its subsequent output to leak.
-      if (
-        routed.deliverAs === "steer" &&
-        !ctx.isIdle() &&
-        responses.destination() !== current
-      ) {
-        current.sendControlNotice(
-          "Cannot steer a local-console task from Telegram. Please resend when that task finishes.",
-        );
-        return;
-      }
+      // Never steer unrelated console work. Queue a separate follow-up turn;
+      // enqueue/input admission alone must not grant that work Telegram authority.
+      const deliverAs = routed.deliverAs === "steer" && !ctx.isIdle() && responses.destination() !== current
+        ? "followUp" : routed.deliverAs;
       const content = responses.origins.enqueue(routed.text, current);
-      pi.sendUserMessage(content, { deliverAs: routed.deliverAs });
+      pi.sendUserMessage(content, { deliverAs });
     },
     canStop: (current) =>
       responses.destination() === current &&
@@ -88,6 +82,7 @@ export default function piTelegram(pi: ExtensionAPI): void {
       activeContext?.abort();
     },
     version: running.version,
+    feedbackEndpoint: FEEDBACK_ENDPOINT,
     connected: (current, ctx) => {
       const signal = updateLifetime.signal;
       void (async () => {

@@ -36,6 +36,7 @@ export class ConnectionManager {
       disconnected(): void;
       reload(ctx: ExtensionContext): boolean;
       version?: string;
+      feedbackEndpoint?: string;
       connected?(connection: TelegramSessionConnection, ctx: ExtensionContext): void;
     },
   ) {}
@@ -102,6 +103,12 @@ export class ConnectionManager {
       bot.token,
       Number(bot.ownerUserId),
       {
+        // Retain bot identity even while submission is disabled so replies to
+        // stale feedback prompts cannot fall through to model input.
+        botId: Number(bot.id),
+        ...(this.callbacks.feedbackEndpoint === undefined ? {} : {
+          feedback: { endpoint: this.callbacks.feedbackEndpoint, version: this.callbacks.version ?? "unknown" },
+        }),
         canStop: () =>
           this.connection === current && this.callbacks.canStop(current),
         onDraftError: () =>

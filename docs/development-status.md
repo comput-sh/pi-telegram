@@ -2,6 +2,10 @@
 
 [Onboarding](../README.md) · [0.6.0 tool contracts](agent-tools.md) · [Changelog](../CHANGELOG.md)
 
+## Unreleased independent follow-up routing
+
+Ordinary owner text and explicit `/steer` now use Pi's `followUp` delivery when busy work has no current Telegram destination, rather than emitting the local-console refusal. This queues a later turn in the same Pi session, never steering the unrelated console task. Authenticated active Telegram work still receives steering. Intake remains asynchronous with no queued acknowledgement; mere enqueue/input admission does not grant console work Stop/file/reminder authority. Existing stale-receipt and connection boundaries remain. No other extension is detected or integrated. Automated extension integration tests exercise queue admission before later user-message start; live activation is unverified. The released 0.6.0 evidence below describes the earlier behavior.
+
 ## Released 0.6.0 — verified checkpoint
 
 Public npm `latest` is **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`. CI **36181107612** and Trusted Publishing run **36181188483** succeeded. The earlier attempt **36180596310** failed validation; its publication step was skipped.

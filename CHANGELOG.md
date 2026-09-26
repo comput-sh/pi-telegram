@@ -2,6 +2,13 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
+## Unreleased
+
+- Accept ordinary Telegram text and explicit `/steer` during unrelated console work as a follow-up Pi turn instead of a refusal/resend notice. Never steer or interrupt that console task; active Telegram work still receives steering and idle text starts normally. No queued acknowledgement or transport wait. A queued receipt grants no Stop/file/reminder authority until its authenticated user turn actually begins; stale receipts remain connection-bound. No peer-extension integration is involved. Live activation remains unverified.
+
+- Add a native-only `/feedback` flow with a dedicated ForceReply prompt, exact owner/private-chat reply binding and explicit one-use Submit/Cancel preview. No AI processing, receipts, reminder triggering or ordinary-message capture; agent questions remain independent. Existing global Stop retains priority even inside a feedback reply, without expanding abort authority. Text is limited to 2,000 UTF-16 code units with a fixed 15-minute flow deadline. Submit sends only feedback/version over HTTPS with a ten-second timeout, no redirects/retries and HTTP 200 success, including empty bodies.
+- Submission remains disabled: the product-owned endpoint is undefined pending the owner's URL. Missing/invalid endpoint reports unavailable before prompting or collecting text. No environment/settings override, rating, automatic solicitation or backend implementation is included. Live feedback behavior is unverified.
+
 ## 0.6.0
 
 **Release candidate — publication pending final checks and CI.** This is a breaking tool-API upgrade. There is no `telegram_send` compatibility adapter. Migrate before activating: use Post for durable text/buttons, Draft start/update/finalize/discard for previews, Edit with returned `messageRef`, and separate Activity working/clear calls. `{}` no longer finalizes or clears anything; finalize the returned `draftRef` and clear Activity explicitly. Ordinary assistant text is still not forwarded. See [migration details](docs/agent-tools.md#migration-from-050).

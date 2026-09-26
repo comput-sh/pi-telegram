@@ -25,6 +25,7 @@ test("inbound notice names explicit tools without generic send or implicit lifec
 test("explicit tools have mandatory independent lifecycle and security guidance; generic send is removed", () => {
   const tools = registeredTools();
   assert.equal(tools.has("telegram_send"), false);
+  assert.ok([...tools.keys()].every(name => !name.includes("feedback")), "native feedback must not expose a model tool");
   for (const name of ["telegram_post", "telegram_draft", "telegram_edit", "telegram_activity"]) {
     const tool = tools.get(name);
     assert.ok(tool);

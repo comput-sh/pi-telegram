@@ -54,7 +54,19 @@ One host-local lease protects polling/pairing. Release the old integration befor
 | `/reload` | Requests Pi reload while idle |
 | `/help` | Lists Telegram controls |
 
+**Unreleased routing change:** ordinary owner text and `/steer` during unrelated console work are accepted as a Pi follow-up turn, not steering. They run after current work finishes; no queued acknowledgement is sent and transport does not wait for the agent. Existing Telegram-originated work still receives steering; idle input still starts normally. Queue admission alone grants no Stop/file/reminder authority over console work—the trusted Telegram receipt must actually begin processing. This is a new turn in the same Pi session, not a separate session. Published 0.6.0 still uses the older refusal/resend behavior. Live activation of this change is unverified.
+
 Replies are sent through explicit extension tools, not automatic forwarding of console text. Use `telegram_post` for replies/buttons, `telegram_draft` for previews and finalization, `telegram_edit` for returned message references, and `telegram_activity` for separate Working/clear control. The removed 0.5.0 `telegram_send` API has no compatibility adapter; see [migration](agent-tools.md#migration-from-050). Button selections and attachments are authenticated follow-ups, not steering commands or automatic approval.
+
+## Native feedback (unreleased source; submission disabled)
+
+The source `/feedback` command is separate from the coding agent. No submission endpoint has been configured: it reports unavailable without opening a prompt or collecting feedback. This is not a feature of published 0.6.0. A reviewed product-owned HTTPS destination must be supplied before enabling submissions; there is no environment/project override or setup step.
+
+When enabled, `/feedback` opens a dedicated Telegram ForceReply prompt. Reply directly to that prompt with 1–2,000 UTF-16 code units of nonblank text, then review the feedback and package version and choose **Submit** or **Cancel**. The whole flow expires after 15 minutes; only the exact owner/private-chat reply and one-use confirmation are accepted. Ordinary messages remain ordinary agent requests. Replies to stale feedback prompts/previews are rejected locally, never silently sent to the model. Attachments are not accepted as feedback.
+
+Only Submit sends JSON containing `feedback` and `version` to the HTTPS endpoint. No Telegram user/chat/bot IDs, project/session identities, files, transcripts or credentials are added. Your own text can contain sensitive data: do not include secrets or private project details. Telegram still carries the prompt/reply, and ordinary network metadata exists; this is not an anonymity guarantee. A ten-second timeout and redirects-as-errors apply, with no automatic retry. HTTP 200 is success even with an empty body. Uncertain delivery is not proof nothing arrived; do not blindly resubmit.
+
+Feedback is not AI-processed, does not create a request receipt or arm the reply reminder, and does not replace an active agent question. **Exception:** `stop` and `/stop` retain their existing global-control priority even when replying to a feedback prompt: they cancel feedback and may abort eligible Telegram work/clear its question. Other commands in an exact feedback reply are literal feedback text. Native UI cleanup is best effort, not proof of cancellation. No rating, automatic welcome/upgrade prompt or backend implementation is included.
 
 ## Files and privacy
 

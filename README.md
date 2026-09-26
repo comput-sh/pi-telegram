@@ -64,7 +64,7 @@ pi -c
 | Bot is silent after restarting Pi | Resume the original session in the same project; inspect local `/telegram-status`. A new session is intentionally unassigned. |
 | Pairing code is clipped or expired | Widen the terminal, or Escape and restart pairing. Send the new exact code to your bot, not BotFather; never guess it. |
 | Webhook / `409 Conflict` / bot already polling | Release or close the previous integration intentionally. Do not start competing pollers or remove live lock files. |
-| “Cannot steer a local-console task…” | The current run is not linked to a Telegram request; worker reports can also cause this classification. The text was not delivered. Let that turn finish, then resend. |
+| Telegram text arrives during unrelated console work | Unreleased source accepts ordinary text and `/steer` as a follow-up turn after that work, without interrupting it or sending a queued acknowledgement. Published 0.6.0 instead refuses and asks you to resend. |
 | Stop did not stop every worker | Telegram Stop is request-bound and host cancellation is not a worker-termination guarantee. Inspect/control the work locally; do not infer cancellation from UI cleanup. |
 | File rejected | Check the documented size/path limits. Credential/repository-internal files are blocked; do not bypass those safeguards. |
 

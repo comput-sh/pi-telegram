@@ -5,8 +5,9 @@ import { TELEGRAM_DOCUMENT_LIMIT, readTelegramProjectFile, validateDocumentCapti
 import { splitTelegramText } from "./messages.ts";
 import { abortable, TransportQueue, TransportQueueError } from "./transport-queue.ts";
 import { validateEmbeddedContent, type EmbeddedContent, type EmbeddedRichMessage, type PreparedEmbeddedContent } from "./rich-content.ts";
+import { FeedbackFlow, type FeedbackOptions } from "./feedback.ts";
 
-const TELEGRAM_HELP = ["Pi Telegram controls", "", "Normal message: steer active Telegram work, or start a new turn when idle", "/steer message: explicitly steer active work", "Leading ! characters are literal text", "/status: show the connected Pi session", "/stop or stop: cancel the current Telegram task and file download", "/reload: reload Pi resources when idle"].join("\n");
+const TELEGRAM_HELP = ["Pi Telegram controls", "", "Normal message: steer active Telegram work, or start a new turn when idle", "/steer message: explicitly steer active work", "Leading ! characters are literal text", "/status: show the connected Pi session", "/feedback: optionally send product feedback after review", "/stop or stop: cancel the current Telegram task and file download", "/reload: reload Pi resources when idle"].join("\n");
 type Choices = Array<{ label: string; reply: string }>;
 interface TelegramApiEnvelope<T> { ok: boolean; result?: T; description?: string; error_code?: number }
 interface TelegramMessage {
@@ -14,6 +15,7 @@ interface TelegramMessage {
   document?: { file_id: string; file_name?: string; file_size?: number };
   photo?: Array<{ file_id: string; file_size?: number; width: number; height: number }>;
   chat: { id: number; type: string }; from?: { id: number; is_bot: boolean };
+  reply_to_message?: TelegramMessage; forward_origin?: unknown;
 }
 interface TelegramUpdate {
   update_id: number; message?: TelegramMessage;
@@ -89,9 +91,18 @@ export class TelegramSessionConnection {
   private thinkingRun?: Thinking;
   private previewUncertain = false;
   private answerDraftStarts = 0;
+  private readonly feedback: FeedbackFlow;
 
   constructor(private readonly token: string, private readonly ownerUserId: number,
-    private readonly options: { canStop?: () => boolean; onDraftError?: () => void } = {}) {}
+    private readonly options: { canStop?: () => boolean; onDraftError?: () => void; botId?: number; feedback?: FeedbackOptions } = {}) {
+    this.feedback = new FeedbackFlow(ownerUserId, options.botId, options.feedback, {
+      request: (method, body, signal) => this.call(method, body, signal),
+      effect: work => this.effect(work),
+      background: work => { void this.track(work).catch(() => this.reportDraftError()); },
+      cleanup: (method, body) => this.cleanupOnClose(method, body),
+      notice: text => this.sendControlNotice(text), ack: (id, text) => this.ack(id, text), signal: this.controller.signal,
+    });
+  }
   get completion(): Promise<void> | undefined { return this.polling; }
   private reportDraftError(): void {
     if (this.stopping || Date.now() - this.lastDraftErrorAt < 30_000) return;
@@ -541,7 +552,7 @@ export class TelegramSessionConnection {
   async configureCommandMenu(): Promise<void> {
     if (this.menuPending) return this.menuPending;
     const task = (async () => {
-      const commands = [ { command: "help", description: "Show Pi Telegram controls" }, { command: "status", description: "Show the connected Pi session" }, { command: "steer", description: "Steer active work: /steer message" }, { command: "stop", description: "Cancel the current Telegram task" }, { command: "reload", description: "Reload Pi resources when idle" } ];
+      const commands = [ { command: "help", description: "Show Pi Telegram controls" }, { command: "status", description: "Show the connected Pi session" }, { command: "feedback", description: "Review and send product feedback" }, { command: "steer", description: "Steer active work: /steer message" }, { command: "stop", description: "Cancel the current Telegram task" }, { command: "reload", description: "Reload Pi resources when idle" } ];
       try { await this.call("setMyCommands", { commands, scope: { type: "chat", chat_id: this.ownerUserId } }, AbortSignal.timeout(20_000)); }
       catch (error) {
         if (!(error instanceof TelegramApiError) || error.errorCode !== 400 || !/chat not found/i.test(error.message)) throw error;
@@ -553,7 +564,7 @@ export class TelegramSessionConnection {
     try { await task; } finally { if (this.menuPending === task) this.menuPending = undefined; }
   }
   private cancelOperations(): void {
-    this.cancelChatAction(); this.cancelThinking();
+    this.cancelChatAction(); this.cancelThinking(); this.feedback.cancel();
     this.generation++; this.operation.abort(); this.operation = new AbortController();
     this.retireDraft(); const status = this.retireWorking(); this.expireQuestion();
     if (status) this.cleanupMessage(status.id);
@@ -568,6 +579,7 @@ export class TelegramSessionConnection {
     const keyboardIds = [this.updateOffer?.messageId].filter((id): id is number => id !== undefined);
     this.expireQuestion(); this.updateGeneration++; this.updateOffer = undefined; this.messages.clear();
     const cleanup = Promise.all([
+      this.feedback.close(),
       ...[...this.statusCleanup].map(id => this.cleanupOnClose("deleteMessage", { chat_id: this.ownerUserId, message_id: id })),
       ...(questionCleanup ? [this.cleanupOnClose(questionCleanup.method, questionCleanup.body)] : []),
       ...keyboardIds.map(id => this.cleanupOnClose("editMessageReplyMarkup", { chat_id: this.ownerUserId, message_id: id, reply_markup: { inline_keyboard: [] } })),
@@ -618,11 +630,16 @@ export class TelegramSessionConnection {
 
   private dispatch(update: TelegramUpdate, onMessage: Input, onStop: () => void, onStatus: () => string | Promise<string>, onReload: () => boolean | Promise<boolean>): void {
     if (update.callback_query) {
-      if (update.callback_query.data?.startsWith("ask:")) this.handleQuestionButton(update.callback_query, onMessage);
+      if (update.callback_query.data?.startsWith("feedback:")) this.feedback.callback(update.callback_query);
+      else if (update.callback_query.data?.startsWith("ask:")) this.handleQuestionButton(update.callback_query, onMessage);
       else this.handleUpdateButton(update.callback_query);
       return;
     }
     const message = update.message; if (!message || !this.validOwner(message)) return;
+    const feedbackCommand = message.text && parseTelegramBotCommand(message.text);
+    const stoppingFeedback = feedbackCommand && feedbackCommand.name === "stop" || message.text?.trim().toLowerCase() === "stop";
+    if (!stoppingFeedback && this.feedback.reply(message)) return;
+    if (feedbackCommand && feedbackCommand.name === "feedback") { this.feedback.start(); return; }
     const document = message.document, photo = message.photo?.slice().sort((a, b) => a.width * a.height - b.width * b.height).at(-1);
     if (document || photo) {
       if (this.incoming) { this.sendControlNotice("A file is still downloading. Please resend this attachment after it finishes."); return; }

@@ -11,6 +11,20 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## Unreleased independent follow-up routing
+
+- Ordinary owner text and explicit `/steer` during unrelated busy work now queue a Pi follow-up turn rather than sending the local-console refusal. Active authenticated Telegram work still receives steering; idle behavior and button/attachment follow-ups are unchanged. No console interruption, automatic queued acknowledgement, peer-extension detection/integration or wait for agent completion.
+- Existing receipt admission only marks pending work; it does not grant Stop/file/reminder authority to the console task. Authority begins when that authenticated user message actually starts. Stale queued receipts remain invalid after disconnect/replacement. No receipt/Stop/watchdog implementation was widened.
+- Registered-extension integration tests cover admission while console work is busy, no console Stop/file authority, later begun-turn file authority, continuing Telegram steering and stale queued replacement isolation. These are mocked host-event tests, not live activation. Existing feedback work remains unchanged and disabled pending its endpoint. Fresh combined typecheck and213 tests (none skipped), audit zero vulnerabilities, pack40 and diff checks passed; independent routing review approved with213 passing tests, audit zero vulnerabilities and pack40. No live activation; feedback remains disabled pending its endpoint.
+
+## Unreleased native feedback (disabled pending endpoint)
+
+- Native `/feedback` stays inside Telegram transport: dedicated ForceReply, exact owner/private-chat/prompt reply binding, plain preview with loaded version and destination, one-use Submit/Cancel. No model tool, Pi input, receipt/watchdog trigger, ordinary-message capture, rating or automatic solicitation.
+- `src/feedback-endpoint.ts` deliberately exports undefined. Index/ConnectionManager always pass known bot identity for stale-prompt/preview rejection, and pass optional endpoint/version only when configured. No environment/settings override or setup UI. Missing/invalid endpoint refuses before collecting text; no placeholder service or backend implementation.
+- Fixed15-minute deadline, nonblank1–2000 UTF-16 text,10-second HTTP timeout. Submit alone sends `{feedback,version}` over HTTPS, no redirects/retries/body parsing; HTTP200 including empty body succeeds. No Telegram/project/session identity or credentials added. Own-bot stale markers are rejection-only, never consent. Native cleanup is best effort.
+- Agent questions remain independent except existing global `stop`/`/stop`, which retains priority even inside ForceReply and does not expand abort authority. Other commands in exact feedback replies are literal text.
+- Source-only validation passed typecheck,211 tests (none skipped), audit zero vulnerabilities, pack dry-run40 files and diff checks. Independent review approved with211 passing tests, audit zero vulnerabilities and pack40. The endpoint remains undefined/disabled; no live feedback UI, HTTP submission or activation was performed. Version/dependencies remain0.6.0/unchanged; no publication, installation or reload for this work.
+
 ## 0.6.0 released
 
 - Authorized 0.6.0 publication succeeded and public npm latest is verified. The exact release commit and artifact evidence are recorded in the current checkpoint below. Shared npm installation remains 0.5.0; source testing/reload is not package installation. This publication did not install or reload anything.
@@ -203,7 +217,7 @@ Do not initialize Git, commit, push, tag, or publish without explicit user autho
 ## Telegram and AI integration
 
 - Accept only private text and supported document/photo attachments from the stored Telegram owner.
-- Ordinary text steers while busy and starts a normal turn when idle; leading `!` characters are literal text, not controls. `/steer` remains an explicit command. Reject Telegram steering into a running console-originated task. Buttons and attachments remain follow-ups. Do not send queued acknowledgements.
+- Ordinary text steers authenticated Telegram work while busy and starts normally when idle; leading `!` characters remain literal. Ordinary text and explicit `/steer` targeting unrelated busy work use a follow-up turn instead, never console steering. Queue admission does not grant request authority until its authenticated user turn begins. Buttons and attachments remain follow-ups. Do not send queued acknowledgements.
 - One-use in-memory request receipts admitted via Pi's extension input source bind output to the receiving connection. The public transport prefix is formatting guidance, not evidence of origin. Clear receipts on disconnect/session replacement.
 - Do not automatically forward assistant text or tool activity. Agent content goes through explicit `telegram_post`, `telegram_draft`, `telegram_edit` and `telegram_activity` calls, including proactive sends from console/scheduled work. Generic `telegram_send` is removed in unreleased source. Never expose hidden reasoning, prompts, raw tool arguments/results, or credentials.
 - The concise inbound notice guides replies, milestone progress and Rich Markdown formatting, not authentication; streaming mechanics remain in tool descriptions/guidelines.

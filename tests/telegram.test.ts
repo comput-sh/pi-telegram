@@ -144,7 +144,7 @@ test("command menu is scoped to the Telegram owner chat", async () => {
       (requests[0]?.body.commands as Array<{ command: string }>).map(
         (command) => command.command,
       ),
-      ["help", "status", "steer", "stop", "reload"],
+      ["help", "status", "feedback", "steer", "stop", "reload"],
     );
     assert.deepEqual(requests[1]?.body, {
       chat_id: 42,
