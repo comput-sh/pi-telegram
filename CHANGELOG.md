@@ -2,14 +2,14 @@
 
 Release notes for `@comput/pi-telegram`, newest first. This file is included in every npm package from 0.2.3 onward. Agents reviewing an upgrade should read all entries newer than the installed version, including upgrade notes and limitations. Update checks discover versions; they do not automatically inject these notes into agent context.
 
-## 0.6.1 — pending publication
+## 0.6.1
 
-**Publication pending verification.** Includes the busy-console routing fix, native feedback with the approved production endpoint, refreshed README and package description. Commit, push and Trusted Publishing are owner-authorized; installation/reload is separate and not authorized. Dependency versions are unchanged.
+**Published release.** Includes the busy-console routing fix, native feedback with the approved production endpoint, refreshed README and package description. Registry, artifact and decoded provenance evidence is recorded in [development status](docs/development-status.md). This release did not install or reload anything. Dependency versions are unchanged.
 
 - Accept ordinary Telegram text and explicit `/steer` during unrelated console work as a follow-up Pi turn instead of a refusal/resend notice. Never steer or interrupt that console task; active Telegram work still receives steering and idle text starts normally. No queued acknowledgement or transport wait. A queued receipt grants no Stop/file/reminder authority until its authenticated user turn actually begins; stale receipts remain connection-bound. No peer-extension integration is involved. Live activation remains unverified.
 
 - Add a native-only `/feedback` flow with a dedicated ForceReply prompt, exact owner/private-chat reply binding and explicit one-use Submit/Cancel preview. No AI processing, receipts, reminder triggering or ordinary-message capture; agent questions remain independent. Existing global Stop retains priority even inside a feedback reply, without expanding abort authority. Text is limited to 2,000 UTF-16 code units with a fixed 15-minute flow deadline. Submit sends only feedback/version over HTTPS with a ten-second timeout, no redirects/retries and HTTP 200 success, including empty bodies.
-- Configure the owner-approved production feedback endpoint as `https://feedback.comput.sh/` (root, no extra path) in source. Submission still requires explicit one-use consent; missing/invalid endpoint reports unavailable before prompting or collecting text. No environment/settings override, rating, automatic solicitation or backend implementation is included. No live submission, reload or publication of this configuration has been verified.
+- Configure the owner-approved production feedback endpoint as `https://feedback.comput.sh/` (root, no extra path) in source. Submission still requires explicit one-use consent; missing/invalid endpoint reports unavailable before prompting or collecting text. No environment/settings override, rating, automatic solicitation or backend implementation is included. Publication is verified; live submission and activation remain unverified.
 
 ## 0.6.0
 

@@ -11,11 +11,14 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
-## Current 0.6.1 release preparation — pending publication
+## Current 0.6.1 release — verified
 
-- Source package and lockfile root versions are **0.6.1**, with no dependency changes. Scope includes independent busy-console follow-up routing and native feedback with the owner-approved production endpoint; the endpoint changes are preserved.
-- The owner has authorized commit, push and publication of **0.6.1** through the existing Trusted Publishing workflow, including the README rewrite and package description. Publication is pending verification; installation/reload is not authorized. Last verified public release remains **0.6.0**; historical checkpoints below retain their original evidence.
-- Local validation and artifact results are recorded in `docs/development-status.md`. Live activation of the routing fix and live feedback submission remain unverified.
+- Public npm `latest` is **0.6.1**, released from `bcdec735cb12f0e73f3bdaa2e5b19a1772bbaf02`. CI **36313665938** and Trusted Publishing **36313671023** succeeded; publication was dispatched once through the existing workflow.
+- All **40 published files** byte-match that release commit. SHA-1: `06659ab7ae5bd235963f342b86ef422a93bea16b`. Registry integrity: `sha512-cFsJYkfztdSINl8l2EQSwvdv6mNa8nvDudnakvoQ+Vsp+0fAcKcRQx0uH3fVV++ef30xi8FCm28XtK3pH1K0jw==`.
+- Computed SHA-512 also matches the decoded SLSA subject. Payload linkage identifies `comput-sh/pi-telegram`, `.github/workflows/publish.yml`, the release commit and run **36313671023**, attempt **1**. Independent DSSE/certificate-chain/Rekor verification was not performed.
+- Fresh local validation passed typecheck, **213 tests** (none skipped), audit zero vulnerabilities, pack40 and diff checks. Dependencies are unchanged. Scope includes independent busy-console follow-ups, native feedback with the approved production endpoint, README rewrite and package description.
+- No installation/reload or live feedback submission was performed. Live routing activation remains unverified; accepted two-session/host-cancellation/adverse-network limitations remain. Details: `docs/development-status.md`.
+- Published documentation retains its pre-publication snapshot; this later checkpoint does not alter the immutable artifact. Do not republish **0.6.1**. Historical checkpoints below retain their original evidence.
 
 ## Historical unreleased feedback endpoint checkpoint
 
@@ -24,13 +27,13 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 
 - Validation for this configuration: `npm run validate` passed typecheck and all213 tests (zero failures/skips); `git diff --check` passed. Version/dependencies remain unchanged. No commit, push or release operation was performed.
 
-## Unreleased independent follow-up routing
+## Historical unreleased independent follow-up routing
 
 - Ordinary owner text and explicit `/steer` during unrelated busy work now queue a Pi follow-up turn rather than sending the local-console refusal. Active authenticated Telegram work still receives steering; idle behavior and button/attachment follow-ups are unchanged. No console interruption, automatic queued acknowledgement, peer-extension detection/integration or wait for agent completion.
 - Existing receipt admission only marks pending work; it does not grant Stop/file/reminder authority to the console task. Authority begins when that authenticated user message actually starts. Stale queued receipts remain invalid after disconnect/replacement. No receipt/Stop/watchdog implementation was widened.
 - Registered-extension integration tests cover admission while console work is busy, no console Stop/file authority, later begun-turn file authority, continuing Telegram steering and stale queued replacement isolation. These are mocked host-event tests, not live activation. Existing feedback work remains unchanged and disabled pending its endpoint. Fresh combined typecheck and213 tests (none skipped), audit zero vulnerabilities, pack40 and diff checks passed; independent routing review approved with213 passing tests, audit zero vulnerabilities and pack40. No live activation; feedback remains disabled pending its endpoint.
 
-## Unreleased native feedback (disabled pending endpoint)
+## Historical unreleased native feedback (disabled pending endpoint)
 
 - Native `/feedback` stays inside Telegram transport: dedicated ForceReply, exact owner/private-chat/prompt reply binding, plain preview with loaded version and destination, one-use Submit/Cancel. No model tool, Pi input, receipt/watchdog trigger, ordinary-message capture, rating or automatic solicitation.
 - `src/feedback-endpoint.ts` deliberately exports undefined. Index/ConnectionManager always pass known bot identity for stale-prompt/preview rejection, and pass optional endpoint/version only when configured. No environment/settings override or setup UI. Missing/invalid endpoint refuses before collecting text; no placeholder service or backend implementation.

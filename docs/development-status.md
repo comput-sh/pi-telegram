@@ -2,21 +2,25 @@
 
 [Onboarding](../README.md) · [0.6.0 tool contracts](agent-tools.md) · [Changelog](../CHANGELOG.md)
 
-## 0.6.1 release preparation — pending publication
+## Released 0.6.1 — verified checkpoint
 
 Source package and lockfile root versions are **0.6.1**; dependencies are unchanged. This preparation includes the busy-console routing fix below and native `/feedback` with the owner-approved `https://feedback.comput.sh/` endpoint. Explicit one-use Submit consent, feedback/version-only payload and owner/private-chat safeguards remain unchanged. Endpoint tests intercept HTTP; no live feedback submission is claimed.
 
-The owner has authorized commit, push and publication of **0.6.1** through the existing Trusted Publishing workflow, including the README rewrite and package description. Publication is pending verification; installation/reload is not authorized. The last verified public npm release remains **0.6.0**; no new registry/provenance verification is claimed. Historical release and source checkpoints below are preserved.
+Public npm `latest` is **0.6.1**, released from [`bcdec735cb12f0e73f3bdaa2e5b19a1772bbaf02`](https://github.com/comput-sh/pi-telegram/commit/bcdec735cb12f0e73f3bdaa2e5b19a1772bbaf02). [CI 36313665938](https://github.com/comput-sh/pi-telegram/actions/runs/36313665938) and [Trusted Publishing 36313671023](https://github.com/comput-sh/pi-telegram/actions/runs/36313671023) succeeded. The existing workflow was dispatched exactly once; no GitHub release trigger was added.
 
-Local validation passed: `npm run validate` (typecheck and **213 tests**, zero failures/skips), `npm audit --audit-level=moderate` (zero vulnerabilities), `npm run pack:check` (**40 files**) and `git diff --check`. The local artifact is `artifacts/comput-pi-telegram-0.6.1.tgz`. Packaging uses the existing source/skill/docs allowlist plus npm's package metadata; hidden runtime directories, credentials, tests, dependencies and local artifacts are excluded. `artifacts/` is Git-ignored. These checks are local evidence, not release-commit CI, publication or live activation.
+Independent download verification found **40 files**, all byte-identical to the release commit. SHA-1: `06659ab7ae5bd235963f342b86ef422a93bea16b`. Computed SHA-512 matches registry integrity `sha512-cFsJYkfztdSINl8l2EQSwvdv6mNa8nvDudnakvoQ+Vsp+0fAcKcRQx0uH3fVV++ef30xi8FCm28XtK3pH1K0jw==` and the decoded SLSA subject digest. The SLSA v1 payload identifies `comput-sh/pi-telegram`, `.github/workflows/publish.yml`, the exact release commit and run **36313671023**, attempt **1**. This checks hashes and decoded provenance linkage, not independent DSSE/Sigstore certificate-chain/Rekor verification.
+
+No installation, reload or live feedback submission was performed; live routing activation remains unverified. Historical release/source checkpoints and accepted live-test limitations below are preserved. The immutable published tarball contains its pre-publication documentation snapshot; this documentation-only checkpoint does not change it. Do not republish 0.6.1.
+
+Local validation passed: `npm run validate` (typecheck and **213 tests**, zero failures/skips), `npm audit --audit-level=moderate` (zero vulnerabilities), `npm run pack:check` (**40 files**) and `git diff --check`. The local artifact is `artifacts/comput-pi-telegram-0.6.1.tgz`. Packaging uses the existing source/skill/docs allowlist plus npm's package metadata; hidden runtime directories, credentials, tests, dependencies and local artifacts are excluded. `artifacts/` is Git-ignored. These local checks were rerun before commit; release-commit CI/publication evidence is recorded above. They do not prove live activation.
 
 ### Independent follow-up routing
 
 Ordinary owner text and explicit `/steer` now use Pi's `followUp` delivery when busy work has no current Telegram destination, rather than emitting the local-console refusal. This queues a later turn in the same Pi session, never steering the unrelated console task. Authenticated active Telegram work still receives steering. Intake remains asynchronous with no queued acknowledgement; mere enqueue/input admission does not grant console work Stop/file/reminder authority. Existing stale-receipt and connection boundaries remain. No other extension is detected or integrated. Automated extension integration tests exercise queue admission before later user-message start; live activation is unverified. The released 0.6.0 evidence below describes the earlier behavior.
 
-## Released 0.6.0 — verified checkpoint
+## Historical released 0.6.0 — verified checkpoint
 
-Public npm `latest` is **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`. CI **36181107612** and Trusted Publishing run **36181188483** succeeded. The earlier attempt **36180596310** failed validation; its publication step was skipped.
+Public npm `latest` at that checkpoint was **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`. CI **36181107612** and Trusted Publishing run **36181188483** succeeded. The earlier attempt **36180596310** failed validation; its publication step was skipped.
 
 Independent download verification found **38 files**, all byte-identical to that release commit. SHA-1 is `e0f8a6c455c65c91386a3e03c5ae11cc6e2758d3`. Computed SHA-512 matches registry integrity `sha512-BlLloQEmVOd8DgktFvOVVntA9cOGto26JlfRIIzx4JxLI929d5Y+s2/9Y1+mGGmYDgG1HLnmYzgCMfXhLertsg==` and the decoded SLSA subject digest. The SLSA v1 payload identifies `comput-sh/pi-telegram`, `.github/workflows/publish.yml`, the exact commit and run **36181188483**, attempt **1**. This verifies hashes and decoded payload linkage, not an independent DSSE/Sigstore certificate-chain/Rekor verification.
 

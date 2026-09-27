@@ -102,4 +102,4 @@ Stop is request-bound; it is not a guarantee that every worker or subprocess has
 - [Development status](docs/development-status.md) — validation evidence and known limitations.
 - [Security reporting](https://github.com/comput-sh/pi-telegram/blob/main/SECURITY.md) · [MIT license](LICENSE)
 
-The public release baseline for this guide is **0.6.0**. The prepared **0.6.1** release adds follow-up queuing during unrelated console work and native feedback; publication is pending. In 0.6.0, messages sent during unrelated console work receive a refusal asking you to resend when it finishes.
+The public release baseline for this guide is **0.6.1**, which adds follow-up queuing during unrelated console work and native feedback. In 0.6.0, messages sent during unrelated console work instead receive a refusal asking you to resend when it finishes.

@@ -2,7 +2,7 @@
 
 [Quick start](../README.md) · [Changelog](../CHANGELOG.md) · [Agent tools](agent-tools.md)
 
-This guide describes **0.6.0**. The separate [agent-tools guide](agent-tools.md) explains the explicit messaging API and migration from 0.5.0.
+This guide describes **0.6.1**. The separate [agent-tools guide](agent-tools.md) explains the explicit messaging API and migration from 0.5.0.
 
 ## Where commands run
 
@@ -54,13 +54,13 @@ One host-local lease protects polling/pairing. Release the old integration befor
 | `/reload` | Requests Pi reload while idle |
 | `/help` | Lists Telegram controls |
 
-**Unreleased routing change:** ordinary owner text and `/steer` during unrelated console work are accepted as a Pi follow-up turn, not steering. They run after current work finishes; no queued acknowledgement is sent and transport does not wait for the agent. Existing Telegram-originated work still receives steering; idle input still starts normally. Queue admission alone grants no Stop/file/reminder authority over console work—the trusted Telegram receipt must actually begin processing. This is a new turn in the same Pi session, not a separate session. Published 0.6.0 still uses the older refusal/resend behavior. Live activation of this change is unverified.
+**Routing in 0.6.1:** ordinary owner text and `/steer` during unrelated console work are accepted as a Pi follow-up turn, not steering. They run after current work finishes; no queued acknowledgement is sent and transport does not wait for the agent. Existing Telegram-originated work still receives steering; idle input still starts normally. Queue admission alone grants no Stop/file/reminder authority over console work—the trusted Telegram receipt must actually begin processing. This is a new turn in the same Pi session, not a separate session. Published 0.6.0 still uses the older refusal/resend behavior. Live activation of this change is unverified.
 
 Replies are sent through explicit extension tools, not automatic forwarding of console text. Use `telegram_post` for replies/buttons, `telegram_draft` for previews and finalization, `telegram_edit` for returned message references, and `telegram_activity` for separate Working/clear control. The removed 0.5.0 `telegram_send` API has no compatibility adapter; see [migration](agent-tools.md#migration-from-050). Button selections and attachments are authenticated follow-ups, not steering commands or automatic approval.
 
-## Native feedback (unreleased source; endpoint configured)
+## Native feedback (0.6.1)
 
-The source `/feedback` command is separate from the coding agent. The owner-approved production endpoint is configured as `https://feedback.comput.sh/` (root, no extra path). This is not a feature of published 0.6.0; no live submission, reload or publication of this configuration has been verified. There is no environment/project override or setup step. Missing/invalid endpoints still report unavailable before collecting feedback.
+The `/feedback` command is separate from the coding agent. The owner-approved production endpoint is configured as `https://feedback.comput.sh/` (root, no extra path). This is included in published 0.6.1, not 0.6.0. Publication is verified; live submission and activation remain unverified. There is no environment/project override or setup step. Missing/invalid endpoints still report unavailable before collecting feedback.
 
 `/feedback` opens a dedicated Telegram ForceReply prompt. Reply directly to that prompt with 1–2,000 UTF-16 code units of nonblank text, then review the feedback and package version and choose **Submit** or **Cancel**. The whole flow expires after 15 minutes; only the exact owner/private-chat reply and one-use confirmation are accepted. Ordinary messages remain ordinary agent requests. Replies to stale feedback prompts/previews are rejected locally, never silently sent to the model. Attachments are not accepted as feedback.
 
