@@ -2,7 +2,15 @@
 
 [Onboarding](../README.md) · [0.6.0 tool contracts](agent-tools.md) · [Changelog](../CHANGELOG.md)
 
-## Unreleased independent follow-up routing
+## 0.6.1 release preparation — pending publication
+
+Source package and lockfile root versions are **0.6.1**; dependencies are unchanged. This preparation includes the busy-console routing fix below and native `/feedback` with the owner-approved `https://feedback.comput.sh/` endpoint. Explicit one-use Submit consent, feedback/version-only payload and owner/private-chat safeguards remain unchanged. Endpoint tests intercept HTTP; no live feedback submission is claimed.
+
+The owner has authorized commit, push and publication of **0.6.1** through the existing Trusted Publishing workflow, including the README rewrite and package description. Publication is pending verification; installation/reload is not authorized. The last verified public npm release remains **0.6.0**; no new registry/provenance verification is claimed. Historical release and source checkpoints below are preserved.
+
+Local validation passed: `npm run validate` (typecheck and **213 tests**, zero failures/skips), `npm audit --audit-level=moderate` (zero vulnerabilities), `npm run pack:check` (**40 files**) and `git diff --check`. The local artifact is `artifacts/comput-pi-telegram-0.6.1.tgz`. Packaging uses the existing source/skill/docs allowlist plus npm's package metadata; hidden runtime directories, credentials, tests, dependencies and local artifacts are excluded. `artifacts/` is Git-ignored. These checks are local evidence, not release-commit CI, publication or live activation.
+
+### Independent follow-up routing
 
 Ordinary owner text and explicit `/steer` now use Pi's `followUp` delivery when busy work has no current Telegram destination, rather than emitting the local-console refusal. This queues a later turn in the same Pi session, never steering the unrelated console task. Authenticated active Telegram work still receives steering. Intake remains asynchronous with no queued acknowledgement; mere enqueue/input admission does not grant console work Stop/file/reminder authority. Existing stale-receipt and connection boundaries remain. No other extension is detected or integrated. Automated extension integration tests exercise queue admission before later user-message start; live activation is unverified. The released 0.6.0 evidence below describes the earlier behavior.
 
@@ -42,7 +50,7 @@ The owner reported single-session Post/Edit/Draft update/finalize and Working cl
 
 The owner explicitly declined two-session testing and accepted it as an untested release limitation. Host cancellation, adverse-network behavior, skill discovery/adherence, and complete photo/reception/setup-completion/update-button/install smoke tests remain unverified. Automated mocks do not establish these results.
 
-## Source independence and steering limitation
+## Historical 0.6.0 source independence and steering limitation
 
 The proposed cross-extension steering integration was withdrawn and removed before activation. Pi Telegram uses only its own authenticated receipts and ordinary Pi host APIs. Unknown user-message input clears the current Telegram request association; while that turn is busy, Telegram steering may receive the existing local-console refusal. No replacement steering design is implemented. Request-bound file, Stop and reminder authority remain unchanged.
 
@@ -62,7 +70,7 @@ The original candidate passed 194 tests; the npm12 pack-parser regression raised
 - The owner-authorized **0.6.0** release is complete. Installation/reload remains separate; future version bumps, commits, pushes and publications require their own authorization.
 - Trusted Publisher owner **comput-sh**, repository **pi-telegram**, workflow **publish.yml**, blank environment is verified working by the successful release; artifact hashes and decoded SLSA linkage are recorded above.
 - Before any authorized release, rerun typecheck/tests, audit, package allowlist and diff checks on the final versioned tree. Exclude local artifacts, hidden runtime state and credentials; never stage the whole worktree indiscriminately. Current source checks are evidence, not CI on a release commit.
-- Single-session observations after the user-reported reload include direct Thinking handoff and the flows listed above. Two-session testing was explicitly declined and accepted as untested; host cancellation/adverse-network behavior remain pending. Do not label the original steering refusal fixed.
+- Single-session observations after the user-reported reload include direct Thinking handoff and the flows listed above. Two-session testing was explicitly declined and accepted as untested; host cancellation/adverse-network behavior remain pending. Those 0.6.0 observations do not verify the 0.6.1 routing fix or its live activation.
 - After separate commit/push/publication authorization, verify workflow success, public registry version/tarball and exact commit/workflow provenance. Do not retry publication merely because registry visibility lags. Installation/reload and live verification are separate operations.
 
 ## Contributor checks

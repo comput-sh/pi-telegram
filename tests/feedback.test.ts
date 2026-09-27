@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TelegramSessionConnection } from "../src/telegram.ts";
 import { feedbackEndpoint, submitFeedback, FEEDBACK_TTL } from "../src/feedback.ts";
+import { FEEDBACK_ENDPOINT } from "../src/feedback-endpoint.ts";
 
-const endpoint = "https://feedback.example.test/submit";
+// Every request is intercepted below; the production destination is never contacted.
+const endpoint = FEEDBACK_ENDPOINT!;
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise<void>(resolve => setImmediate(resolve)); };
 const deferred = () => { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; };
 async function fixture(run: (f: any) => Promise<void>, enabled = true, endpointOverride = endpoint) {
@@ -46,6 +48,7 @@ test("feedback needs exact owner prompt reply and Submit; payload is feedback/ve
   assert.equal(f.inputs.length, 0);
   assert.ok(f.preview().body.text.includes("/status is confusing"));
   assert.ok(f.preview().body.text.includes("0.6.0"));
+  assert.ok(f.preview().body.text.includes("https://feedback.comput.sh/"));
   assert.equal(f.requests.filter((r: any) => r.method === "feedback").length, 0);
   f.click("submit", { from: { id: 9, is_bot: false } });
   f.click("submit", { message: { ...f.botMessage(f.preview()), message_id: 999 } });
@@ -54,6 +57,8 @@ test("feedback needs exact owner prompt reply and Submit; payload is feedback/ve
   f.click("submit"); f.click("submit"); await flush();
   const submissions = f.requests.filter((r: any) => r.method === "feedback");
   assert.equal(submissions.length, 1);
+  assert.equal(submissions[0].url, "https://feedback.comput.sh/");
+  assert.equal(submissions[0].init.method, "POST");
   assert.deepEqual(submissions[0].body, { feedback: "/status is confusing", version: "0.6.0" });
   assert.equal(submissions[0].init.redirect, "error"); assert.equal(submissions[0].init.credentials, "omit");
   assert.ok(f.requests.some((r: any) => r.body.text === "Thank you — feedback submitted."));
@@ -206,6 +211,8 @@ test("HTTP raw error details never appear in feedback outcome or trigger replay"
 }));
 
 test("endpoint validation refuses collection destinations with credentials or nonHTTPS", () => {
+  assert.equal(FEEDBACK_ENDPOINT, "https://feedback.comput.sh/");
+  assert.equal(feedbackEndpoint(FEEDBACK_ENDPOINT), "https://feedback.comput.sh/");
   assert.equal(feedbackEndpoint(undefined), undefined);
   for (const value of ["http://example.test", "https://u:p@example.test", "https://example.test/?secret=x", "https://example.test/#fragment", "not a URL"]) assert.throws(() => feedbackEndpoint(value));
 });

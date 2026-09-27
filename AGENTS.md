@@ -11,6 +11,19 @@ Pi Telegram is a globally loaded TypeScript package that makes Telegram a native
 
 Prefer native Telegram drafts, Rich Messages, commands, documents, media, and controls when they improve the experience. Native Thinking is a generic status placeholder, never a channel for hidden reasoning. Keep model-facing usage guidance in the extension's tool descriptions, prompt guidelines, and transport notice, not exclusively in this development guide: consuming projects will not have this file.
 
+## Current 0.6.1 release preparation — pending publication
+
+- Source package and lockfile root versions are **0.6.1**, with no dependency changes. Scope includes independent busy-console follow-up routing and native feedback with the owner-approved production endpoint; the endpoint changes are preserved.
+- The owner has authorized commit, push and publication of **0.6.1** through the existing Trusted Publishing workflow, including the README rewrite and package description. Publication is pending verification; installation/reload is not authorized. Last verified public release remains **0.6.0**; historical checkpoints below retain their original evidence.
+- Local validation and artifact results are recorded in `docs/development-status.md`. Live activation of the routing fix and live feedback submission remain unverified.
+
+## Historical unreleased feedback endpoint checkpoint
+
+- The owner-approved production destination is now configured in `src/feedback-endpoint.ts` as `https://feedback.comput.sh/` (root, no extra path). This supersedes the disabled-endpoint status in the historical source checkpoints below without changing their recorded evidence.
+- Explicit Submit consent, feedback/version-only payload, owner/private-chat binding and disabled/invalid endpoint safeguards remain unchanged. Production-configuration tests intercept all HTTP calls; no live request to the endpoint was made. No live submission, reload, installation or publication has been performed or verified for this configuration.
+
+- Validation for this configuration: `npm run validate` passed typecheck and all213 tests (zero failures/skips); `git diff --check` passed. Version/dependencies remain unchanged. No commit, push or release operation was performed.
+
 ## Unreleased independent follow-up routing
 
 - Ordinary owner text and explicit `/steer` during unrelated busy work now queue a Pi follow-up turn rather than sending the local-console refusal. Active authenticated Telegram work still receives steering; idle behavior and button/attachment follow-ups are unchanged. No console interruption, automatic queued acknowledgement, peer-extension detection/integration or wait for agent completion.
@@ -130,9 +143,9 @@ Prefer native Telegram drafts, Rich Messages, commands, documents, media, and co
 - Added separate `telegram_send_photo` for inline PNG/JPEG delivery with 10 MB, dimension-sum (10,000), and aspect-ratio (20:1) checks. `sharp` is a runtime dependency for actual image decoding/validation.
 - Photo/document uploads share request-bound routing, project-file safeguards, captions, and abort-aware upload transport. No conversion, fallback, or metadata stripping. Reload and live inline-photo smoke testing remain pending.
 
-## Current handoff / release checkpoint
+## Historical 0.6.0 handoff / release checkpoint
 
-- Source and public npm `latest`: **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`.
+- Source and public npm `latest` at that checkpoint: **0.6.0**, released from `9ab9c133daeef0f23b96b7afefe773581bca0c87`.
 - CI **36181107612** and Trusted Publishing **36181188483** succeeded. Earlier run **36180596310** failed validation and its publish step was skipped; it did not publish a competing artifact.
 - Independent download verification: all **38 files** byte-match the release commit. SHA-1: `e0f8a6c455c65c91386a3e03c5ae11cc6e2758d3`. SHA-512 matches registry integrity and the decoded SLSA subject digest.
 - Registry SHA-512 integrity: `sha512-BlLloQEmVOd8DgktFvOVVntA9cOGto26JlfRIIzx4JxLI929d5Y+s2/9Y1+mGGmYDgG1HLnmYzgCMfXhLertsg==`.

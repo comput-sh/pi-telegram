@@ -29,10 +29,12 @@ test("onboarding guides have explicit package entries and resolving local Markdo
 
 test("beginner onboarding distinguishes released package, command surfaces and safe recovery", async () => {
   const readme = await readFile(resolve(root, "README.md"), "utf8");
-  for (const phrase of [/Documentation for 0\.6\.0/, /Upgrading from 0\.5\.0/, /generic `telegram_send` tool is replaced/, /pi install npm:@comput\/pi-telegram/, /Local Pi/, /Telegram/, /Terminal/, /Do not read files, change anything or run commands/, /pi -r/, /pi --session <id>/, /Keep the Pi terminal\/process running/, /not.*erase credentials or revoke tokens/, /not.*end-to-end encrypted/, /Do not start competing pollers or remove live lock files/]) assert.match(readme, phrase);
-  assert.ok(readme.indexOf("## 3. Connect") < readme.indexOf("## Troubleshooting"));
+  for (const phrase of [/public release baseline.*\*\*0\.6\.[01]\*\*/, /Upgrading from 0\.5\.0/, /explicit Post\/Draft\/Edit\/Activity tools/, /pi install npm:@comput\/pi-telegram/, /local Pi/i, /Telegram/, /terminal/i, /Do not read files, change anything or run commands/, /pi -r/, /Pi process must stay running/, /does not delete the bot or revoke its token/, /not.*end-to-end encrypted/]) assert.match(readme, phrase);
+  assert.ok(readme.indexOf("### 2. Add your bot") < readme.indexOf("### 3. Say hello"));
   assert.doesNotMatch(readme, /npm (?:i|install) (?:-g )?@comput\/pi-telegram/);
   const advanced = await readFile(resolve(root, guides[0]!), "utf8");
+  assert.match(advanced, /pi --session <id>/);
+  assert.match(advanced, /no compatibility adapter/);
   assert.match(advanced, /Advanced: manager-created bots/);
   assert.match(advanced, /Never delete live locks/);
   assert.match(advanced, /Package removal does not revoke a token/);

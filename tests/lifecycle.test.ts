@@ -185,25 +185,29 @@ async function fixture(
   }
 }
 
-test("disabled native feedback never solicits text, submits externally or enters the agent", async () =>
+test("production native feedback opens a prompt without submitting or entering the agent", async () =>
   fixture(async (cwd, network) => {
-    assert.equal(FEEDBACK_ENDPOINT, undefined, "production submission awaits the owner's reviewed endpoint");
+    assert.equal(FEEDBACK_ENDPOINT, "https://feedback.comput.sh/", "owner-approved root destination");
     await saveProjectSettings(cwd, { version: 2, bots: [bot()] });
     network.inbound.push({ update_id: 1, message: { message_id: 1, text: "/feedback", chat: { id: 42, type: "private" }, from: { id: 42, is_bot: false } } });
     const fetch = globalThis.fetch;
-    const forcedReplies: unknown[] = [];
+    const forcedReplies: any[] = [];
     globalThis.fetch = (async (url, init) => {
       assert.ok(String(url).startsWith("https://api.telegram.org/") || String(url).startsWith("https://registry.npmjs.org/"), "no feedback endpoint network call");
       const body = JSON.parse(String(init?.body ?? "{}"));
-      if (body.reply_markup?.force_reply) forcedReplies.push(body);
+      if (body.reply_markup?.force_reply) {
+        forcedReplies.push(body);
+        return new Response(JSON.stringify({ ok: true, result: { message_id: 1001 } }));
+      }
       return fetch(url, init);
     }) as typeof fetch;
     const pi = harness(cwd);
     try {
       await pi.emit("session_start");
-      for (let i = 0; i < 100 && !network.messages.some(text => /feedback.*(?:unavailable|not available)/i.test(text)); i++) await new Promise(resolve => setTimeout(resolve, 10));
-      assert.ok(network.messages.some(text => /feedback.*(?:unavailable|not available)/i.test(text)));
-      assert.deepEqual(forcedReplies, []);
+      for (let i = 0; i < 100 && !forcedReplies.length; i++) await new Promise(resolve => setTimeout(resolve, 10));
+      assert.equal(forcedReplies.length, 1);
+      assert.ok(forcedReplies[0].text.startsWith("Pi Telegram feedback\n"));
+      assert.ok(!network.messages.some(text => /feedback.*(?:unavailable|not available)/i.test(text)));
       assert.deepEqual(pi.sent, [], "no Pi input, receipts or reminder candidate can originate from feedback");
     } finally { await pi.emit("session_shutdown"); }
   }));
